@@ -289,8 +289,10 @@ def resolve_vehicle_details(
     """Resolve the structured vehicle details used by the monitor presentation layer."""
     trip_id, trip, route = resolve_trip_context(entity.trip_update, static_gtfs)
     endpoints = static_gtfs.endpoints.get(trip_id)
-    origin = resolve_stop_name(static_gtfs.stops, endpoints.origin_stop_id) if endpoints else "?"
-    destination = resolve_stop_name(static_gtfs.stops, endpoints.destination_stop_id) if endpoints else "?"
+    origin = resolve_stop_name(static_gtfs.stops, endpoints.origin_stop_id) if endpoints else None
+    destination = resolve_stop_name(static_gtfs.stops, endpoints.destination_stop_id) if endpoints else None
+    origin = origin or "?"
+    destination = destination or "?"
     previous_stop = resolve_previous_stop_name(entity.trip_update, static_gtfs.stops, feed_timestamp) or origin
     next_stop = resolve_next_stop_name(entity.trip_update, static_gtfs.stops, feed_timestamp) or destination
     headsign = trip.trip_headsign if trip and trip.trip_headsign else destination
@@ -351,11 +353,11 @@ def build_target_windows(
             trip_total_shape_dist=trip_stop_times[-1].shape_dist_traveled,
             previous_stop_sequence=previous_stop.stop_sequence,
             previous_stop_id=previous_stop.stop_id,
-            previous_stop_name=resolve_stop_name(stops, previous_stop.stop_id),
+            previous_stop_name=resolve_stop_name(stops, previous_stop.stop_id) or "?",
             previous_stop_shape_dist=previous_stop.shape_dist_traveled,
             next_stop_sequence=next_stop.stop_sequence,
             next_stop_id=next_stop.stop_id,
-            next_stop_name=resolve_stop_name(stops, next_stop.stop_id),
+            next_stop_name=resolve_stop_name(stops, next_stop.stop_id) or "?",
             next_stop_shape_dist=next_stop.shape_dist_traveled,
         )
 
@@ -434,9 +436,9 @@ def resolve_direction_id(
     return "?"
 
 
-def resolve_stop_name(stops: dict[str, StopInfo], stop_id: str) -> str:
+def resolve_stop_name(stops: dict[str, StopInfo], stop_id: str) -> str | None:
     stop = stops.get(stop_id)
-    return stop.stop_name if stop else "?"
+    return stop.stop_name if stop else None
 
 
 def normalize_agency(agency_id: str) -> str:

@@ -260,10 +260,11 @@ def build_minimal_gtfs_zip(
     stop_times_by_trip = {
         trip_id: stop_times for trip_id, stop_times in stop_times_by_trip.items() if trip_id in valid_trip_ids
     }
-    stop_ids = {
-        stop_time.stop_id for stop_times in stop_times_by_trip.values() for stop_time in stop_times if stop_time.stop_id
+    stops = {
+        row["stop_id"]: trim_row(row, STOPS_COLUMNS)
+        for row in stops_rows
+        if row.get("stop_id")
     }
-    stops = {row["stop_id"]: trim_row(row, STOPS_COLUMNS) for row in stops_rows if row.get("stop_id") in stop_ids}
     shapes_by_id = {shape_id: points for shape_id, points in shapes_by_id.items() if shape_id in shape_ids}
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
