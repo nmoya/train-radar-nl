@@ -1,0 +1,11 @@
+[project]
+name = "train-radar-nl"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "gtfs-realtime-bindings>=2.0.0",
+    "requests>=2.32.5",
+    "tqdm>=4.67.3",
+]
