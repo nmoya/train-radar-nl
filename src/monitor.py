@@ -18,6 +18,8 @@ class MonitorRenderer:
     snapshot: MonitorSnapshot | None
     next_poll_in_seconds: int
     display_timestamp: int
+    config: AppConfig
+    static_gtfs: StaticGtfsData | None
 
     def trains_for_direction(self, direction_id: str) -> list[TrainStatus]:
         """Return the train list for one direction bucket."""
@@ -58,7 +60,11 @@ class MonitorRenderer:
     def build_lines(self) -> list[str]:
         """Build the terminal view as plain text lines for the current display tick."""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.display_timestamp))
-        lines = [f"[{timestamp}] Next poll in {self.next_poll_in_seconds}s", ""]
+        lines = [
+            f"[{timestamp}] Next poll in {self.next_poll_in_seconds}s",
+            *self.build_header_lines(),
+            "",
+        ]
 
         lines.extend(
             self.build_section_lines(
@@ -77,6 +83,37 @@ class MonitorRenderer:
                 is_current=False,
             )
         )
+        return lines
+
+    def build_header_lines(self) -> list[str]:
+        """Build the persistent dashboard header with config and GTFS summary."""
+        lines = [
+            (
+                "Target  : "
+                f"lat={self.config.target_lat:.6f} "
+                f"lon={self.config.target_lon:.6f} "
+                f"radius={self.config.radius_meters}m"
+            )
+        ]
+
+        if self.static_gtfs is None:
+            lines.append("Static  : unavailable")
+            return lines
+
+        lines.append(
+            (
+                "Static  : "
+                f"routes={len(self.static_gtfs.routes)} "
+                f"trips={len(self.static_gtfs.trips)} "
+                f"stops={len(self.static_gtfs.stops)} "
+                f"target_windows={len(self.static_gtfs.target_windows)}"
+            )
+        )
+
+        stop_pairs = self.static_gtfs.summarize_target_stop_pairs()
+        if stop_pairs:
+            lines.append("Windows : " + " | ".join(stop_pairs))
+
         return lines
 
     def render(self) -> None:
@@ -178,5 +215,7 @@ def main(
             snapshot=latest_snapshot,
             next_poll_in_seconds=feed_update.next_poll_in_seconds,
             display_timestamp=int(time.time()),
+            config=config,
+            static_gtfs=static_gtfs,
         ).render()
         time.sleep(1)
