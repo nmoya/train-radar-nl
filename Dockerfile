@@ -18,4 +18,4 @@ RUN uv sync --locked
 
 EXPOSE 8080
 
-CMD ["uv", "run", "train-radar-api", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uv", "run", "python", "-m", "src.api.app", "--host", "0.0.0.0", "--port", "8080"]
