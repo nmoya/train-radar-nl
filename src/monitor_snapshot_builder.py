@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from google.transit import gtfs_realtime_pb2
 
-from feed import FeedUpdate
-from monitor_models import DirectionId, MonitorSnapshot, TrainStatus
-from static_gtfs import StaticGtfsData, is_train_vehicle, resolve_vehicle_details
-from target_passage import TargetPassageEstimator
+from src.feed import FeedUpdate
+from src.monitor_models import DirectionId, MonitorSnapshot, TrainStatus
+from src.static_gtfs import StaticGtfsData, is_train_vehicle, resolve_vehicle_details
+from src.target_passage import TargetPassageEstimator
 
 
 class MonitorSnapshotBuilder:

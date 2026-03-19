@@ -8,6 +8,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOTENV_PATH = PROJECT_ROOT / ".env"
 TARGET_LAT = "TARGET_LATITUDE"
 TARGET_LON = "TARGET_LONGITUDE"
+FULL_STATIC_GTFS_CACHE_PATH = PROJECT_ROOT / ".cache" / "gtfs-nl.zip"
+MINIFIED_STATIC_GTFS_CACHE_PATH = PROJECT_ROOT / ".cache" / "gtfs-nl-min.zip"
 
 
 def load_dotenv(path: Path) -> None:
@@ -75,10 +77,18 @@ def with_target_coordinates(
     )
 
 
+def with_static_gtfs_cache_path(
+    config: AppConfig,
+    static_gtfs_cache_path: Path,
+) -> AppConfig:
+    """Return a config copy with a different static GTFS cache path."""
+    return replace(config, static_gtfs_cache_path=static_gtfs_cache_path)
+
+
 VROLIKSTRAAT_CONFIG = AppConfig(
     feed_url="https://gtfs-rt.r-ov.nl/trainUpdates.pb",
     static_gtfs_url="https://gtfs.ovapi.nl/nl/gtfs-nl.zip",
-    static_gtfs_cache_path=PROJECT_ROOT / ".cache" / "gtfs-nl-min.zip",
+    static_gtfs_cache_path=MINIFIED_STATIC_GTFS_CACHE_PATH,
     target_lat=read_float_env(TARGET_LAT),
     target_lon=read_float_env(TARGET_LON),
     radius_meters=200,

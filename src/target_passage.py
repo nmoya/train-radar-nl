@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from google.transit import gtfs_realtime_pb2
 
-from config import AppConfig
-from static_gtfs import TargetWindow
+from src.config import AppConfig
+from src.static_gtfs import TargetWindow
 
 
 class TargetPassageEstimator:

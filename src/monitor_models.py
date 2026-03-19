@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from static_gtfs import TargetWindow, VehicleDetails
+from src.static_gtfs import TargetWindow, VehicleDetails
 
 
 class DirectionId:

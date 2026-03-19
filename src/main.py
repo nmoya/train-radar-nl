@@ -1,9 +1,9 @@
 import argparse
 import sys
 
-from config import VROLIKSTRAAT_CONFIG, with_target_coordinates
-from feed import FeedPoller
-from monitor import main
+from src.config import VROLIKSTRAAT_CONFIG, with_target_coordinates
+from src.feed import FeedPoller
+from src.monitor import main
 
 
 def parse_args() -> argparse.Namespace:
@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def cli() -> int:
     args = parse_args()
     config = with_target_coordinates(
         VROLIKSTRAAT_CONFIG,
@@ -33,14 +33,18 @@ if __name__ == "__main__":
         static_gtfs = load_result.data
         if static_gtfs is None:
             print("Static GTFS load failed for an unknown reason.", file=sys.stderr)
-            raise SystemExit(1)
+            return 1
 
-        raise SystemExit(main(poller=poller, static_gtfs=static_gtfs, config=config))
+        return main(poller=poller, static_gtfs=static_gtfs, config=config)
     except KeyboardInterrupt:
         print("\nStopped.")
-        raise SystemExit(0)
+        return 0
     except Exception as exc:
         print(f"Unexpected error: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        return 1
     finally:
         poller.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())

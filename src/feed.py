@@ -7,8 +7,8 @@ from dataclasses import dataclass
 import requests
 from google.transit import gtfs_realtime_pb2
 
-from config import AppConfig
-from static_gtfs import StaticGtfsData, load_static_gtfs
+from src.config import AppConfig
+from src.static_gtfs import StaticGtfsData, load_static_gtfs
 
 
 @dataclass(frozen=True)

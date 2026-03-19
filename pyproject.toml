@@ -5,7 +5,15 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.116.0",
     "gtfs-realtime-bindings>=2.0.0",
+    "pydantic>=2.11.0",
     "requests>=2.32.5",
     "tqdm>=4.67.3",
+    "uvicorn>=0.35.0",
 ]
+
+[project.scripts]
+train-radar-dashboard = "src.main:cli"
+train-radar-minify = "src.scripts.build_minimal_gtfs_zip:main"
+train-radar-api = "src.api.app:cli"

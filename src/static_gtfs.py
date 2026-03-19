@@ -10,8 +10,8 @@ import requests
 from google.transit import gtfs_realtime_pb2
 from tqdm import tqdm
 
-from config import AppConfig
-from geo import haversine_m
+from src.config import AppConfig
+from src.geo import haversine_m
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ The application:
 - estimates when each train will pass the configured target point
 - groups trains into left/right directions
 - renders a continuously refreshed dashboard with `Current` and `Upcoming` sections
+- can expose the same monitor data through a small HTTP API
 
 The current default target is configured in [`src/config.py`](src/config.py).
 
@@ -22,9 +23,12 @@ The current default target is configured in [`src/config.py`](src/config.py).
 
 Project dependencies are defined in [`pyproject.toml`](pyproject.toml) and locked in [`uv.lock`](uv.lock):
 
+- `fastapi`
 - `gtfs-realtime-bindings`
+- `pydantic`
 - `requests`
 - `tqdm`
+- `uvicorn`
 
 ## Installation
 
@@ -40,12 +44,20 @@ Create your local target configuration file:
 cp .env.example .env
 ```
 
+## Entry Points
+
+The project currently has three entry points:
+
+- `uv run train-radar-dashboard`: terminal dashboard
+- `uv run train-radar-minify`: GTFS minifier
+- `uv run train-radar-api`: HTTP API
+
 ## Target Configuration
 
 The monitor target coordinates can be supplied in two ways:
 
 1. environment variables loaded from `.env`
-2. command line arguments passed to `src/main.py`
+2. command line arguments passed to the dashboard or minifier entry points
 
 Environment variables:
 
@@ -82,7 +94,7 @@ The terminal dashboard shows, for both `Left` and `Right`:
 From the repository root:
 
 ```powershell
-uv run python src/main.py
+uv run train-radar-dashboard
 ```
 
 This uses the target coordinates from `.env`.
@@ -90,14 +102,12 @@ This uses the target coordinates from `.env`.
 Use command line arguments only when you want to override the `.env` values for a specific run:
 
 ```powershell
-uv run python src/main.py --lat <decimal_lat> --lon <decimal_longitude>
+uv run train-radar-dashboard --lat <decimal_lat> --lon <decimal_longitude>
 ```
 
 On startup, the application will:
 
-- print the active config
 - load static GTFS data
-- print target stop-pair summary information
 - start the live dashboard
 
 ## Building a Minimal GTFS Zip
@@ -108,13 +118,13 @@ By default it reads `TARGET_LATITUDE` and `TARGET_LONGITUDE` from `.env`. You ca
 General command:
 
 ```powershell
-uv run python src\scripts\build_minimal_gtfs_zip.py --input <source-gtfs.zip> --output <reduced-gtfs.zip> --radius-meters <radius> [--route-type 2]
+uv run train-radar-minify --input <source-gtfs.zip> --output <reduced-gtfs.zip> --radius-meters <radius> [--route-type 2]
 ```
 
 Example using the target from `.env`:
 
 ```powershell
-uv run python src\scripts\build_minimal_gtfs_zip.py --input .cache\gtfs-nl.zip --output .cache\gtfs-nl-min.zip --radius-meters 200 --route-type 2
+uv run train-radar-minify --input .cache\gtfs-nl.zip --output .cache\gtfs-nl-min.zip --radius-meters 200 --route-type 2
 ```
 
 Arguments:
@@ -126,14 +136,58 @@ Arguments:
 - `--radius-meters`: maximum distance from the target to a trip shape
 - `--route-type`: GTFS `route_type` to keep, default `2` for rail
 
+## Running the HTTP API
+
+From the repository root:
+
+```powershell
+uv run train-radar-api --host 127.0.0.1 --port 8000
+```
+
+Available endpoints:
+
+- `GET /healthz`
+- `GET /api/v1/radar?lat=<decimal_lat>&lon=<decimal_longitude>`
+
+API behavior:
+
+- the server loads the full `gtfs-nl.zip` archive during startup
+- responses are cached per normalized latitude/longitude for 30 seconds
+- the feed polling path is reused from the CLI implementation
+
+Example request:
+
+```text
+http://127.0.0.1:8000/api/v1/radar?lat=52.357019&lon=4.921569
+```
+
+## Fly.io Boilerplate
+
+Deployment boilerplate files:
+
+- [`fly.toml`](fly.toml)
+- [`Procfile`](Procfile)
+- [`Dockerfile`](Dockerfile)
+- [`.dockerignore`](.dockerignore)
+
+The current Fly setup assumes:
+
+- one HTTP service on port `8080`
+- automatic machine start/stop
+- GTFS files are downloaded on startup rather than baked into the image
+
 ## Architecture
 
 The codebase is split by responsibility.
 
-- [`src/main.py`](src/main.py): startup entrypoint. Loads static GTFS, prints a short summary, then starts the monitor loop.
+- [`src/main.py`](src/main.py): CLI dashboard entrypoint.
+- [`src/api/app.py`](src/api/app.py): FastAPI application and API CLI entrypoint.
+- [`src/api/service.py`](src/api/service.py): API runtime service, startup GTFS loading, and per-location TTL cache.
+- [`src/api/models.py`](src/api/models.py): Pydantic response models.
 - [`src/monitor.py`](src/monitor.py): runtime loop and terminal renderer.
 - [`src/monitor_models.py`](src/monitor_models.py): shared monitor domain types such as `DirectionId`, `TrainStatus`, and `MonitorSnapshot`.
 - [`src/monitor_snapshot_builder.py`](src/monitor_snapshot_builder.py): transforms a realtime feed update into a `MonitorSnapshot`.
+- [`src/snapshot_view.py`](src/snapshot_view.py): shared snapshot selection logic used by the CLI and API.
 - [`src/target_passage.py`](src/target_passage.py): target passage estimation and alert-window timing calculations.
 - [`src/static_gtfs.py`](src/static_gtfs.py): static GTFS loading, trimming, target-window construction, and vehicle detail resolution.
 - [`src/feed.py`](src/feed.py): polling logic, conditional requests, feed caching, and update versioning.
@@ -152,3 +206,4 @@ The main runtime flow is:
 - Static GTFS is cached at the path configured by `static_gtfs_cache_path`.
 - The monitor currently uses the configuration constant `VROLIKSTRAAT_CONFIG`.
 - The dashboard is terminal-based and redraws continuously.
+- The API currently loads and retains the full GTFS rows in memory at startup. That is the simplest reuse path, but it may need to be redesigned for smaller Fly machines.

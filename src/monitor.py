@@ -4,13 +4,14 @@ import sys
 import time
 from dataclasses import dataclass
 
-from alerts import clear_terminal
-from config import VROLIKSTRAAT_CONFIG, AppConfig
-from feed import FeedPoller
-from monitor_models import DirectionId, MonitorSnapshot, TrainStatus
-from monitor_snapshot_builder import MonitorSnapshotBuilder
-from static_gtfs import StaticGtfsData, TargetWindow
-from target_passage import TargetPassageEstimator
+from src.alerts import clear_terminal
+from src.config import VROLIKSTRAAT_CONFIG, AppConfig
+from src.feed import FeedPoller
+from src.monitor_models import DirectionId, MonitorSnapshot, TrainStatus
+from src.monitor_snapshot_builder import MonitorSnapshotBuilder
+from src.snapshot_view import MonitorSnapshotView
+from src.static_gtfs import StaticGtfsData, TargetWindow
+from src.target_passage import TargetPassageEstimator
 
 
 @dataclass(frozen=True)
@@ -21,41 +22,9 @@ class MonitorRenderer:
     config: AppConfig
     static_gtfs: StaticGtfsData | None
 
-    def trains_for_direction(self, direction_id: str) -> list[TrainStatus]:
-        """Return the train list for one direction bucket."""
-        if self.snapshot is None:
-            return []
-        if direction_id == DirectionId.left:
-            return self.snapshot.left_trains
-        if direction_id == DirectionId.right:
-            return self.snapshot.right_trains
-        raise ValueError(f"Unsupported direction_id: {direction_id}")
-
-    def select_current_train(self, direction_id: str) -> TrainStatus | None:
-        """Return the most relevant in-range train for one direction."""
-        in_range_statuses = [
-            status
-            for status in self.trains_for_direction(direction_id)
-            if status.is_in_range_at(self.display_timestamp)
-        ]
-        if not in_range_statuses:
-            return None
-
-        return min(
-            in_range_statuses,
-            key=lambda status: (
-                abs(status.estimated_target_time - self.display_timestamp),
-                status.estimated_target_time,
-                status.entity_key,
-            ),
-        )
-
-    def select_next_upcoming_train(self, direction_id: str) -> TrainStatus | None:
-        """Return the next train in a direction that has not yet entered its active window."""
-        for status in self.trains_for_direction(direction_id):
-            if status.range_start_time > self.display_timestamp:
-                return status
-        return None
+    @property
+    def view(self) -> MonitorSnapshotView:
+        return MonitorSnapshotView(snapshot=self.snapshot, display_timestamp=self.display_timestamp)
 
     def build_lines(self) -> list[str]:
         """Build the terminal view as plain text lines for the current display tick."""
@@ -69,8 +38,8 @@ class MonitorRenderer:
         lines.extend(
             self.build_section_lines(
                 "Current",
-                self.select_current_train(DirectionId.left),
-                self.select_current_train(DirectionId.right),
+                self.view.select_current_train(DirectionId.left),
+                self.view.select_current_train(DirectionId.right),
                 is_current=True,
             )
         )
@@ -78,8 +47,8 @@ class MonitorRenderer:
         lines.extend(
             self.build_section_lines(
                 "Upcoming",
-                self.select_next_upcoming_train(DirectionId.left),
-                self.select_next_upcoming_train(DirectionId.right),
+                self.view.select_next_upcoming_train(DirectionId.left),
+                self.view.select_next_upcoming_train(DirectionId.right),
                 is_current=False,
             )
         )
