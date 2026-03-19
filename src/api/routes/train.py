@@ -16,7 +16,4 @@ def train_radar(
 ) -> MonitorApiResponse:
     radar_service: RadarApiService = request.app.state.radar_service
 
-    try:
-        return radar_service.get_status(lat, lon)
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return radar_service.get_status(lat, lon)
