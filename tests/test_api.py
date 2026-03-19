@@ -19,8 +19,8 @@ def test_health_reports_ready_state_and_minified_gtfs(client: TestClient) -> Non
         "static_gtfs_ready": True,
         "cache_ttl_seconds": 30,
     }
-    assert payload["app_config"]["target_lat"] == 52.357019
-    assert payload["app_config"]["target_lon"] == 4.921569
+    assert payload["app_config"]["target_lat"] == 52.379028
+    assert payload["app_config"]["target_lon"] == 4.90125
     assert Path(payload["app_config"]["static_gtfs_cache_path"]) == MINIFIED_STATIC_GTFS_CACHE_PATH
     assert any(dependency.startswith("fastapi==") for dependency in payload["dependencies"])
 
@@ -43,7 +43,7 @@ def test_train_radar_returns_payload_and_uses_cache(client: TestClient) -> None:
     radar_service._cache.clear()
     radar_service._poller.update = fake_update
 
-    params = {"lat": 52.357019, "lon": 4.921569}
+    params = {"lat": 52.379028, "lon": 4.90125}
 
     first_response = client.get("/train/radar", params=params)
     second_response = client.get("/train/radar", params=params)
@@ -59,8 +59,8 @@ def test_train_radar_returns_payload_and_uses_cache(client: TestClient) -> None:
     assert payload["cache_ttl_seconds"] == 30
     assert payload["cache_expires_at"] - payload["generated_at"] == 30
     assert payload["target"] == {
-        "latitude": 52.357019,
-        "longitude": 4.921569,
+        "latitude": 52.379028,
+        "longitude": 4.90125,
         "radius_meters": 200,
     }
     assert payload["current"] == {"left": None, "right": None}
@@ -75,10 +75,10 @@ def test_train_radar_returns_503_when_service_fails(client: TestClient) -> None:
 
     client.app.state.radar_service.get_status = raise_error
 
-    response = client.get("/train/radar", params={"lat": 52.357019, "lon": 4.921569})
+    response = client.get("/train/radar", params={"lat": 52.379028, "lon": 4.90125})
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "cannot build status for 52.357019,4.921569"}
+    assert response.json() == {"detail": "cannot build status for 52.379028,4.90125"}
 
 
 def test_train_radar_requires_coordinates(client: TestClient) -> None:

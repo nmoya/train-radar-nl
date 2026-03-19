@@ -14,6 +14,46 @@ import src.api.service as service_module
 from src.api.app import create_app
 from src.config import MINIFIED_STATIC_GTFS_CACHE_PATH
 from src.feed import FeedUpdate
+from src.static_gtfs import StaticGtfsData, StaticGtfsRows, TargetWindow, VehicleDetails
+
+from .support import (
+    make_config,
+    make_static_gtfs_data,
+    make_static_gtfs_rows,
+    make_target_window,
+    make_train_status,
+    make_vehicle_details,
+)
+
+
+@pytest.fixture
+def app_config(tmp_path: Path):
+    return make_config(tmp_path / "gtfs-test.zip")
+
+
+@pytest.fixture
+def sample_target_window() -> TargetWindow:
+    return make_target_window()
+
+
+@pytest.fixture
+def sample_vehicle_details() -> VehicleDetails:
+    return make_vehicle_details()
+
+
+@pytest.fixture
+def sample_train_status():
+    return make_train_status()
+
+
+@pytest.fixture
+def sample_static_gtfs_data() -> StaticGtfsData:
+    return make_static_gtfs_data()
+
+
+@pytest.fixture
+def sample_static_gtfs_rows() -> StaticGtfsRows:
+    return make_static_gtfs_rows()
 
 
 @pytest.fixture
