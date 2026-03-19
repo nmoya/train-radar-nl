@@ -146,19 +146,20 @@ uv run train-radar-api --host 127.0.0.1 --port 8000
 
 Available endpoints:
 
-- `GET /healthz`
-- `GET /api/v1/radar?lat=<decimal_lat>&lon=<decimal_longitude>`
+- `GET /health`
+- `GET /train/radar?lat=<decimal_lat>&lon=<decimal_longitude>`
 
 API behavior:
 
 - the server loads the full `gtfs-nl.zip` archive during startup
 - responses are cached per normalized latitude/longitude for 30 seconds
 - the feed polling path is reused from the CLI implementation
+- the health response includes the deployed commit, startup time, and installed dependencies
 
 Example request:
 
 ```text
-http://127.0.0.1:8000/api/v1/radar?lat=52.357019&lon=4.921569
+http://127.0.0.1:8000/train/radar?lat=52.357019&lon=4.921569
 ```
 
 ## Fly.io Boilerplate

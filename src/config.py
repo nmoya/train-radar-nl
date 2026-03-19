@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, replace
+import time
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +62,7 @@ class AppConfig:
     target_passage_directional_tolerance_factor: float
     target_passage_alert_lead_seconds: int
     user_agent: str
+    startup_time: int = field(default_factory=lambda: int(time.time()))
 
 
 def with_target_coordinates(

@@ -55,6 +55,10 @@ class RadarApiService:
     def static_gtfs_ready(self) -> bool:
         return self._static_gtfs_rows is not None
 
+    @property
+    def config(self) -> AppConfig:
+        return self._base_config
+
     def startup(self) -> None:
         zip_path = ensure_static_gtfs_zip(self._session, self._base_config)
         self._static_gtfs_rows = read_static_gtfs_rows(zip_path)

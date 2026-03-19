@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from src.config import VROLIKSTRAAT_CONFIG
 
-from .models import HealthResponse, MonitorApiResponse
+from .routes.health import router as health_router
+from .routes.train import router as train_router
 from .service import RadarApiService
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -31,28 +37,27 @@ def create_app() -> FastAPI:
     )
     app.state.radar_service = service
 
-    @app.get("/healthz", response_model=HealthResponse)
-    def healthz(request: Request) -> HealthResponse:
-        radar_service: RadarApiService = request.app.state.radar_service
-        return HealthResponse(
-            status="ok" if radar_service.static_gtfs_ready else "starting",
-            static_gtfs_ready=radar_service.static_gtfs_ready,
-            static_gtfs_cache_path=radar_service.static_gtfs_cache_path,
-            cache_ttl_seconds=radar_service.cache_ttl_seconds,
-        )
-
-    @app.get("/api/v1/radar", response_model=MonitorApiResponse)
-    def radar_status(
-        request: Request,
-        lat: float = Query(..., description="Target latitude"),
-        lon: float = Query(..., description="Target longitude"),
-    ) -> MonitorApiResponse:
-        radar_service: RadarApiService = request.app.state.radar_service
-
+    @app.middleware("http")
+    async def request_middleware(request: Request, call_next):
+        started_at = time.perf_counter()
         try:
-            return radar_service.get_status(lat, lon)
+            response = await call_next(request)
         except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            logger.exception("Unhandled request error for %s %s", request.method, request.url.path)
+            return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 1)
+        logger.info(
+            "%s %s -> %s in %sms",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+        return response
+
+    app.include_router(health_router)
+    app.include_router(train_router)
 
     return app
 

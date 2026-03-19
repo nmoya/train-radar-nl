@@ -3,6 +3,23 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class AppConfigResponse(BaseModel):
+    feed_url: str
+    static_gtfs_url: str
+    static_gtfs_cache_path: str
+    target_lat: float
+    target_lon: float
+    radius_meters: int
+    poll_interval_seconds: int
+    target_passage_tolerance_ceiling_seconds: int
+    target_passage_tolerance_floor_seconds: int
+    target_passage_tolerance_factor: float
+    target_passage_directional_tolerance_factor: float
+    target_passage_alert_lead_seconds: int
+    user_agent: str
+    startup_time: str
+
+
 class TargetLocationResponse(BaseModel):
     latitude: float
     longitude: float
@@ -51,6 +68,8 @@ class MonitorApiResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    deployed_commit: str | None
     static_gtfs_ready: bool
-    static_gtfs_cache_path: str
     cache_ttl_seconds: int
+    app_config: AppConfigResponse
+    dependencies: list[str] = Field(default_factory=list)

@@ -1,5 +1,7 @@
 FROM python:3.13-slim
 
+ARG APP_GIT_SHA=unknown
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV UV_LINK_MODE=copy
@@ -11,6 +13,7 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 
+RUN printf '%s\n' "$APP_GIT_SHA" > .build-commit
 RUN uv sync --locked
 
 EXPOSE 8080
