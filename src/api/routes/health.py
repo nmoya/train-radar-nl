@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 
-from src.api.models import AppConfigResponse, HealthResponse
+from src.api.models import AppConfigResponse, HealthResponse, RadarServiceResponse
 from src.api.service import RadarApiService
 from src.config import PROJECT_ROOT
 
@@ -41,10 +41,11 @@ def health(request: Request) -> HealthResponse:
     radar_service: RadarApiService = request.app.state.radar_service
     config = radar_service.config
     return HealthResponse(
-        status="ok" if radar_service.static_gtfs_ready else "starting",
         deployed_commit=read_deployed_commit(),
-        static_gtfs_ready=radar_service.static_gtfs_ready,
-        cache_ttl_seconds=radar_service.cache_ttl_seconds,
+        radar_service=RadarServiceResponse(
+            static_gtfs_ready=radar_service.static_gtfs_ready,
+            cache_ttl_seconds=radar_service.cache_ttl_seconds,
+        ),
         app_config=AppConfigResponse(
             feed_url=config.feed_url,
             static_gtfs_url=config.static_gtfs_url,

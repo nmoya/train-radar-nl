@@ -66,10 +66,13 @@ class MonitorApiResponse(BaseModel):
     target_stop_pairs: list[str] = Field(default_factory=list)
 
 
-class HealthResponse(BaseModel):
-    status: str
-    deployed_commit: str | None
+class RadarServiceResponse(BaseModel):
     static_gtfs_ready: bool
     cache_ttl_seconds: int
+
+
+class HealthResponse(BaseModel):
+    deployed_commit: str | None
+    radar_service: RadarServiceResponse
     app_config: AppConfigResponse
     dependencies: list[str] = Field(default_factory=list)
