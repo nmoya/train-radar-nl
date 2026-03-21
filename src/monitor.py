@@ -124,9 +124,9 @@ class MonitorRenderer:
         """Build one dashboard section with left and right directional train blocks."""
         return [
             title,
-            *self.format_train_status("Left", left_status, is_current=is_current),
-            "",
             *self.format_train_status("Right", right_status, is_current=is_current),
+            "",
+            *self.format_train_status("Left", left_status, is_current=is_current),
         ]
 
     def format_train_status(
