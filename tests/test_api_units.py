@@ -22,7 +22,8 @@ from src.api.models import (
     TargetLocationResponse,
     TrainStatusResponse,
 )
-from src.api.service import CacheEntry, RadarApiService
+from src.api.service import RadarApiService
+from src.api.ttl_cache import TtlCache
 
 from .support import make_config, make_snapshot, make_static_gtfs_data, make_train_status, make_vehicle_details
 
@@ -66,23 +67,23 @@ def test_api_models_support_expected_defaults() -> None:
 def test_radar_api_service_startup_and_shutdown(app_config, monkeypatch: pytest.MonkeyPatch) -> None:
     service = RadarApiService(app_config)
     closed = []
-    monkeypatch.setattr(service_module, "ensure_static_gtfs_zip", lambda session, config: Path("cache.zip"))
+    monkeypatch.setattr(service.poller, "ensure_static_gtfs_zip", lambda: Path("cache.zip"))
     monkeypatch.setattr(service_module, "read_static_gtfs_rows", lambda path: "rows")
-    monkeypatch.setattr(service._poller, "close", lambda: closed.append(True))
+    monkeypatch.setattr(service.poller, "close", lambda: closed.append(True))
 
     service.startup()
     service.shutdown()
 
     assert service.static_gtfs_ready is True
-    assert service._static_gtfs_rows == "rows"
+    assert service.static_gtfs_rows == "rows"
     assert closed == [True]
 
 
 def test_radar_api_service_get_status_uses_cache_and_expires(app_config, monkeypatch: pytest.MonkeyPatch) -> None:
     service = RadarApiService(app_config, cache_ttl_seconds=30)
     built: list[str] = []
-    times = iter([100.0, 110.0, 140.0])
-    monkeypatch.setattr(service_module.time, "monotonic", lambda: next(times))
+    times = iter([100.0, 100.0, 110.0, 140.0, 140.0])
+    monkeypatch.setattr(service.response_cache, "_clock", lambda: next(times))
     monkeypatch.setattr(service, "_build_status", lambda: built.append("built") or "payload")
 
     first = service.get_status()
@@ -95,9 +96,19 @@ def test_radar_api_service_get_status_uses_cache_and_expires(app_config, monkeyp
     assert built == ["built", "built"]
 
 
+def test_ttl_cache_expires_entries() -> None:
+    times = iter([10.0, 15.0, 41.0])
+    cache = TtlCache[str](30, clock=lambda: next(times))
+
+    cache.set("value")
+
+    assert cache.get() == "value"
+    assert cache.get() is None
+
+
 def test_radar_api_service_build_status_and_train_response(app_config, monkeypatch: pytest.MonkeyPatch) -> None:
     service = RadarApiService(app_config, cache_ttl_seconds=30)
-    service._static_gtfs_rows = "rows"
+    service.static_gtfs_rows = "rows"
     static_gtfs_data = make_static_gtfs_data()
     train_status = make_train_status(
         vehicle_details=make_vehicle_details(direction_id="0"),
@@ -108,7 +119,7 @@ def test_radar_api_service_build_status_and_train_response(app_config, monkeypat
     snapshot = make_snapshot(feed_timestamp=160, left_trains=[train_status], right_trains=[])
 
     monkeypatch.setattr(service_module, "build_static_gtfs_data", lambda rows, config: static_gtfs_data)
-    monkeypatch.setattr(service._poller, "update", lambda: SimpleNamespace(error="warn"))
+    monkeypatch.setattr(service.poller, "update", lambda: SimpleNamespace(error="warn"))
     monkeypatch.setattr(service_module.time, "time", lambda: 150)
 
     class FakeBuilder:
@@ -181,7 +192,9 @@ def test_train_route_returns_status_and_wraps_errors() -> None:
 
     assert train_module.train_radar(request) == {"lat": 1.0, "lon": 2.0}
 
-    failing_request = build_request_with_service(SimpleNamespace(get_status=lambda: (_ for _ in ()).throw(RuntimeError("bad"))))
+    failing_request = build_request_with_service(
+        SimpleNamespace(get_status=lambda: (_ for _ in ()).throw(RuntimeError("bad")))
+    )
     with pytest.raises(HTTPException) as exc_info:
         train_module.train_radar(failing_request)
     assert exc_info.value.status_code == 503
@@ -203,6 +216,7 @@ def test_api_app_create_app_parse_args_and_cli(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(app_module, "RadarApiService", FakeService)
     app = app_module.create_app()
+
     @app.get("/boom")
     async def boom():
         raise RuntimeError("broken")
@@ -220,14 +234,18 @@ def test_api_app_create_app_parse_args_and_cli(monkeypatch: pytest.MonkeyPatch) 
     assert boom_response.status_code == 500
     assert boom_response.json() == {"detail": "Internal Server Error"}
 
-    monkeypatch.setattr(app_module.argparse.ArgumentParser, "parse_args", lambda self: argparse.Namespace(host="0.0.0.0", port=8080))
+    monkeypatch.setattr(
+        app_module.argparse.ArgumentParser, "parse_args", lambda self: argparse.Namespace(host="0.0.0.0", port=8080)
+    )
     args = app_module.parse_args()
     assert args.host == "0.0.0.0"
     assert args.port == 8080
 
     calls = []
     monkeypatch.setattr(app_module, "parse_args", lambda: argparse.Namespace(host="127.0.0.1", port=9000))
-    monkeypatch.setattr(app_module.uvicorn, "run", lambda target, host, port, reload: calls.append((target, host, port, reload)))
+    monkeypatch.setattr(
+        app_module.uvicorn, "run", lambda target, host, port, reload: calls.append((target, host, port, reload))
+    )
     assert app_module.cli() == 0
     assert calls == [("src.api.app:app", "127.0.0.1", 9000, False)]
 

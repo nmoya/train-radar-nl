@@ -40,7 +40,7 @@ def test_train_radar_returns_payload_and_uses_cache(client: TestClient) -> None:
         )
 
     radar_service = client.app.state.radar_service
-    radar_service._cache = None
+    radar_service._response_cache.clear()
     radar_service._poller.update = fake_update
 
     first_response = client.get("/train/radar")

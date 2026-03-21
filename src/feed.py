@@ -3,12 +3,13 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 from google.transit import gtfs_realtime_pb2
 
 from src.config import AppConfig
-from src.static_gtfs import StaticGtfsData, load_static_gtfs
+from src.static_gtfs import StaticGtfsData, ensure_static_gtfs_zip, load_static_gtfs
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,9 @@ class FeedPoller:
             return StaticGtfsLoadResult(data=None, error=f"Static GTFS load failed: {exc}")
         except Exception as exc:
             return StaticGtfsLoadResult(data=None, error=f"Static GTFS parse failed: {exc}")
+
+    def ensure_static_gtfs_zip(self) -> Path:
+        return ensure_static_gtfs_zip(self._session, self._config)
 
     def update(self) -> FeedUpdate:
         if self._poll_interval_remaining_seconds() > 0:

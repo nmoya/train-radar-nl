@@ -1,26 +1,17 @@
 from __future__ import annotations
 
-import threading
 import time
-from dataclasses import dataclass
-
-import requests
 
 from src.config import AppConfig
 from src.feed import FeedPoller
 from src.monitor_models import DirectionId, TrainStatus
 from src.monitor_snapshot_builder import MonitorSnapshotBuilder
 from src.snapshot_view import MonitorSnapshotView
-from src.static_gtfs import StaticGtfsRows, build_static_gtfs_data, ensure_static_gtfs_zip, read_static_gtfs_rows
+from src.static_gtfs import StaticGtfsRows, build_static_gtfs_data, read_static_gtfs_rows
 from src.target_passage import TargetPassageEstimator
+from src.api.ttl_cache import TtlCache
 
 from .models import DirectionBoardResponse, MonitorApiResponse, TargetLocationResponse, TrainStatusResponse
-
-
-@dataclass(frozen=True)
-class CacheEntry:
-    expires_at: float
-    response: MonitorApiResponse
 
 
 class RadarApiService:
@@ -30,62 +21,49 @@ class RadarApiService:
         *,
         cache_ttl_seconds: int = 30,
     ) -> None:
-        self._base_config = base_config
-        self._cache_ttl_seconds = cache_ttl_seconds
-        self._session = requests.Session()
-        self._poller = FeedPoller(self._base_config, session=self._session)
-        self._static_gtfs_rows: StaticGtfsRows | None = None
-        self._cache: CacheEntry | None = None
-        self._lock = threading.Lock()
+        self.base_config = base_config
+        self.poller = FeedPoller(self.base_config)
+        self.static_gtfs_rows: StaticGtfsRows | None = None
+        self.response_cache = TtlCache[MonitorApiResponse](cache_ttl_seconds)
 
     @property
     def cache_ttl_seconds(self) -> int:
-        return self._cache_ttl_seconds
+        return self.response_cache.ttl_seconds
 
     @property
     def static_gtfs_cache_path(self) -> str:
-        return str(self._base_config.static_gtfs_cache_path)
+        return str(self.base_config.static_gtfs_cache_path)
 
     @property
     def static_gtfs_ready(self) -> bool:
-        return self._static_gtfs_rows is not None
+        return self.static_gtfs_rows is not None
 
     @property
     def config(self) -> AppConfig:
-        return self._base_config
+        return self.base_config
 
     def startup(self) -> None:
-        zip_path = ensure_static_gtfs_zip(self._session, self._base_config)
-        self._static_gtfs_rows = read_static_gtfs_rows(zip_path)
+        zip_path = self.poller.ensure_static_gtfs_zip()
+        self.static_gtfs_rows = read_static_gtfs_rows(zip_path)
 
     def shutdown(self) -> None:
-        self._poller.close()
+        self.poller.close()
 
     def get_status(self) -> MonitorApiResponse:
-        now = time.monotonic()
-
-        with self._lock:
-            cached_entry = self._cache
-            if cached_entry is not None and cached_entry.expires_at > now:
-                return cached_entry.response
+        cached_response = self.response_cache.get()
+        if cached_response is not None:
+            return cached_response
 
         response = self._build_status()
-
-        with self._lock:
-            self._cache = CacheEntry(
-                expires_at=now + self._cache_ttl_seconds,
-                response=response,
-            )
-
-        return response
+        return self.response_cache.set(response)
 
     def _build_status(self) -> MonitorApiResponse:
-        if self._static_gtfs_rows is None:
+        if self.static_gtfs_rows is None:
             raise RuntimeError("Static GTFS rows are not loaded.")
 
-        config = self._base_config
-        static_gtfs = build_static_gtfs_data(self._static_gtfs_rows, config)
-        feed_update = self._poller.update()
+        config = self.base_config
+        static_gtfs = build_static_gtfs_data(self.static_gtfs_rows, config)
+        feed_update = self.poller.update()
         display_timestamp = int(time.time())
         snapshot = MonitorSnapshotBuilder(
             static_gtfs,
@@ -95,8 +73,8 @@ class RadarApiService:
 
         return MonitorApiResponse(
             generated_at=display_timestamp,
-            cache_ttl_seconds=self._cache_ttl_seconds,
-            cache_expires_at=display_timestamp + self._cache_ttl_seconds,
+            cache_ttl_seconds=self.cache_ttl_seconds,
+            cache_expires_at=display_timestamp + self.cache_ttl_seconds,
             feed_timestamp=snapshot.feed_timestamp if snapshot is not None else None,
             feed_error=feed_update.error,
             target=TargetLocationResponse(
