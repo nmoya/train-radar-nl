@@ -79,19 +79,37 @@ def test_radar_api_service_startup_and_shutdown(app_config, monkeypatch: pytest.
 
 def test_radar_api_service_get_status_uses_cache_and_expires(app_config, monkeypatch: pytest.MonkeyPatch) -> None:
     service = RadarApiService(app_config, cache_ttl_seconds=30)
-    built: list[str] = []
+    built: list[int] = []
+    rendered: list[tuple[str, int]] = []
     times = iter([100.0, 100.0, 110.0, 140.0, 140.0])
     monkeypatch.setattr(service.response_cache, "_clock", lambda: next(times))
-    monkeypatch.setattr(service, "_build_status", lambda: built.append("built") or "payload")
+    wall_times = iter([1000, 1010, 1040])
+    monkeypatch.setattr(service_module.time, "time", lambda: next(wall_times))
+    monkeypatch.setattr(
+        service,
+        "_build_cached_status",
+        lambda display_timestamp: built.append(display_timestamp) or f"cached@{display_timestamp}",
+    )
+    monkeypatch.setattr(
+        service,
+        "_build_response",
+        lambda cached_status, display_timestamp: rendered.append((cached_status, display_timestamp))
+        or f"{cached_status}:{display_timestamp}",
+    )
 
     first = service.get_status()
     second = service.get_status()
     third = service.get_status()
 
-    assert first == "payload"
-    assert second == first
-    assert third == first
-    assert built == ["built", "built"]
+    assert first == "cached@1000:1000"
+    assert second == "cached@1000:1010"
+    assert third == "cached@1040:1040"
+    assert built == [1000, 1040]
+    assert rendered == [
+        ("cached@1000", 1000),
+        ("cached@1000", 1010),
+        ("cached@1040", 1040),
+    ]
 
 
 def test_ttl_cache_expires_entries() -> None:

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+import src.api.service as service_module
 from src.config import MINIFIED_STATIC_GTFS_CACHE_PATH
 from src.feed import FeedUpdate
 
@@ -25,7 +26,10 @@ def test_health_reports_ready_state_and_minified_gtfs(client: TestClient) -> Non
     assert any(dependency.startswith("fastapi==") for dependency in payload["dependencies"])
 
 
-def test_train_radar_returns_payload_and_uses_cache(client: TestClient) -> None:
+def test_train_radar_returns_payload_and_uses_cache(
+    client: TestClient,
+    monkeypatch,
+) -> None:
     poller_calls = 0
 
     def fake_update() -> FeedUpdate:
@@ -42,29 +46,35 @@ def test_train_radar_returns_payload_and_uses_cache(client: TestClient) -> None:
     radar_service = client.app.state.radar_service
     radar_service.response_cache.clear()
     radar_service.poller.update = fake_update
+    monkeypatch.setattr(service_module.time, "time", lambda: 100)
 
     first_response = client.get("/train/radar")
+    monkeypatch.setattr(service_module.time, "time", lambda: 105)
     second_response = client.get("/train/radar", params={"lat": 0, "lon": 0})
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
     assert poller_calls == 1
 
-    payload = first_response.json()
-    assert second_response.json() == payload
-    assert payload["feed_timestamp"] is None
-    assert payload["feed_error"] == "stubbed feed update"
-    assert payload["cache_ttl_seconds"] == 30
-    assert payload["cache_expires_at"] - payload["generated_at"] == 30
-    assert payload["target"] == {
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+    assert first_payload["feed_timestamp"] is None
+    assert first_payload["feed_error"] == "stubbed feed update"
+    assert first_payload["cache_ttl_seconds"] == 30
+    assert first_payload["cache_expires_at"] == 130
+    assert second_payload["cache_expires_at"] == 130
+    assert first_payload["generated_at"] == 100
+    assert second_payload["generated_at"] == 105
+    assert second_payload["cache_expires_at"] - second_payload["generated_at"] == 25
+    assert second_payload["target"] == {
         "latitude": 52.379028,
         "longitude": 4.90125,
         "radius_meters": 200,
     }
-    assert payload["current"] == {"left": None, "right": None}
-    assert payload["upcoming"] == {"left": None, "right": None}
-    assert payload["target_stop_pairs"]
-    assert all(" -> " in stop_pair for stop_pair in payload["target_stop_pairs"])
+    assert second_payload["current"] == {"left": None, "right": None}
+    assert second_payload["upcoming"] == {"left": None, "right": None}
+    assert second_payload["target_stop_pairs"]
+    assert all(" -> " in stop_pair for stop_pair in second_payload["target_stop_pairs"])
 
 
 def test_train_radar_returns_503_when_service_fails(client: TestClient) -> None:
