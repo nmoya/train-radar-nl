@@ -80,19 +80,19 @@ def test_radar_api_service_startup_and_shutdown(app_config, monkeypatch: pytest.
 
 def test_radar_api_service_get_status_uses_cache_and_expires(app_config, monkeypatch: pytest.MonkeyPatch) -> None:
     service = RadarApiService(app_config, cache_ttl_seconds=30)
-    built: list[tuple[float, float]] = []
+    built: list[str] = []
     times = iter([100.0, 110.0, 140.0])
     monkeypatch.setattr(service_module.time, "monotonic", lambda: next(times))
-    monkeypatch.setattr(service, "_build_status", lambda lat, lon: built.append((lat, lon)) or f"{lat}:{lon}")
+    monkeypatch.setattr(service, "_build_status", lambda: built.append("built") or "payload")
 
-    first = service.get_status(52.3570194, 4.9215694)
-    second = service.get_status(52.35701949, 4.92156949)
-    third = service.get_status(52.3570194, 4.9215694)
+    first = service.get_status()
+    second = service.get_status()
+    third = service.get_status()
 
-    assert first == "52.357019:4.921569"
+    assert first == "payload"
     assert second == first
     assert third == first
-    assert built == [(52.357019, 4.921569), (52.357019, 4.921569)]
+    assert built == ["built", "built"]
 
 
 def test_radar_api_service_build_status_and_train_response(app_config, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -120,7 +120,7 @@ def test_radar_api_service_build_status_and_train_response(app_config, monkeypat
 
     monkeypatch.setattr(service_module, "MonitorSnapshotBuilder", FakeBuilder)
 
-    response = service._build_status(52.1, 4.2)
+    response = service._build_status()
 
     assert response.generated_at == 150
     assert response.feed_timestamp == 160
@@ -128,7 +128,8 @@ def test_radar_api_service_build_status_and_train_response(app_config, monkeypat
     assert response.current.left.service == "NS intercity"
     assert response.current.left.progress_percent == 50
     assert response.current.left.seconds_until_target == 20
-    assert response.target.latitude == 52.1
+    assert response.target.latitude == app_config.target_lat
+    assert response.target.longitude == app_config.target_lon
     assert response.target_stop_pairs == ["Beta -> Gamma", "Gamma -> Beta"]
     assert service._build_train_response(None, 150) is None
 
@@ -137,7 +138,7 @@ def test_radar_api_service_build_status_requires_startup(app_config) -> None:
     service = RadarApiService(app_config)
 
     with pytest.raises(RuntimeError, match="not loaded"):
-        service._build_status(1.0, 2.0)
+        service._build_status()
 
 
 def test_health_route_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, app_config) -> None:
@@ -175,14 +176,14 @@ def test_health_route_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, a
 
 
 def test_train_route_returns_status_and_wraps_errors() -> None:
-    service = SimpleNamespace(get_status=lambda lat, lon: {"lat": lat, "lon": lon})
+    service = SimpleNamespace(get_status=lambda: {"lat": 1.0, "lon": 2.0})
     request = build_request_with_service(service)
 
-    assert train_module.train_radar(request, 1.0, 2.0) == {"lat": 1.0, "lon": 2.0}
+    assert train_module.train_radar(request) == {"lat": 1.0, "lon": 2.0}
 
-    failing_request = build_request_with_service(SimpleNamespace(get_status=lambda lat, lon: (_ for _ in ()).throw(RuntimeError("bad"))))
+    failing_request = build_request_with_service(SimpleNamespace(get_status=lambda: (_ for _ in ()).throw(RuntimeError("bad"))))
     with pytest.raises(HTTPException) as exc_info:
-        train_module.train_radar(failing_request, 1.0, 2.0)
+        train_module.train_radar(failing_request)
     assert exc_info.value.status_code == 503
     assert exc_info.value.detail == "bad"
 

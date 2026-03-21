@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from src.config import VROLIKSTRAAT_CONFIG, with_target_coordinates
+from src.config import DEFAULT_CONFIG, with_target_coordinates
 from src.feed import FeedPoller
 from src.monitor import main
 
@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
 def cli() -> int:
     args = parse_args()
     config = with_target_coordinates(
-        VROLIKSTRAAT_CONFIG,
+        DEFAULT_CONFIG,
         target_lat=args.lat,
         target_lon=args.lon,
     )

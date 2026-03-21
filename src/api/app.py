@@ -10,7 +10,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from src.config import VROLIKSTRAAT_CONFIG
+from src.config import DEFAULT_CONFIG
 
 from .routes.health import router as health_router
 from .routes.train import router as train_router
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
-    service = RadarApiService(VROLIKSTRAAT_CONFIG)
+    service = RadarApiService(DEFAULT_CONFIG)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):

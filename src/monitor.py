@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 
 from src.alerts import clear_terminal
-from src.config import VROLIKSTRAAT_CONFIG, AppConfig
+from src.config import DEFAULT_CONFIG, AppConfig
 from src.feed import FeedPoller
 from src.monitor_models import DirectionId, MonitorSnapshot, TrainStatus
 from src.monitor_snapshot_builder import MonitorSnapshotBuilder
@@ -164,7 +164,7 @@ class MonitorRenderer:
 def main(
     poller: FeedPoller,
     static_gtfs: StaticGtfsData | None,
-    config: AppConfig = VROLIKSTRAAT_CONFIG,
+    config: AppConfig = DEFAULT_CONFIG,
 ) -> int:
     """Run the monitor loop, polling, processing, and rendering once per second."""
     latest_snapshot: MonitorSnapshot | None = None

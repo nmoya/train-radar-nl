@@ -9,9 +9,9 @@ The application:
 - estimates when each train will pass the configured target point
 - groups trains into left/right directions
 - renders a continuously refreshed dashboard with `Current` and `Upcoming` sections
-- can expose the same monitor data through a small HTTP API
+- can expose the same monitor data through a small HTTP API for the server-configured default target
 
-The current default target is configured in [`src/config.py`](src/config.py).
+The default target is whatever `TARGET_LATITUDE` and `TARGET_LONGITUDE` are set to in the server `.env`.
 
 ## Requirements
 
@@ -67,10 +67,11 @@ Environment variables:
 Files:
 
 - [`.env.example`](.env.example): example values
-- `.env`: your local values, loaded automatically at startup
+- `.env`: local values, loaded automatically at startup
 
 The application loads `.env` itself. You do not need to export these variables in your shell first.
-Command line arguments override `.env` values when both are provided.
+For the HTTP API, the default configuration is whatever is defined in the server `.env` file, and `/train/radar` serves that single fixed target.
+Command line arguments still override `.env` for the dashboard or minifier when both are provided.
 
 ## Functionality
 
@@ -147,19 +148,19 @@ uv run train-radar-api --host 127.0.0.1 --port 8000
 Available endpoints:
 
 - `GET /health`
-- `GET /train/radar?lat=<decimal_lat>&lon=<decimal_longitude>`
+- `GET /train/radar`
 
 API behavior:
 
-- the server loads the full `gtfs-nl.zip` archive during startup
-- responses are cached per normalized latitude/longitude for 30 seconds
+- the server loads the bundled `.cache/gtfs-nl-min.zip` archive during startup
+- responses are cached for the server-configured default target for 30 seconds
 - the feed polling path is reused from the CLI implementation
 - the health response includes the deployed commit, startup time, and installed dependencies
 
 Example request:
 
 ```text
-http://127.0.0.1:8000/train/radar?lat=52.357019&lon=4.921569
+http://127.0.0.1:8000/train/radar
 ```
 
 ## Fly.io Boilerplate
@@ -175,7 +176,7 @@ The current Fly setup assumes:
 
 - one HTTP service on port `8080`
 - automatic machine start/stop
-- GTFS files are downloaded on startup rather than baked into the image
+- `.cache/gtfs-nl-min.zip` is committed and baked into the image
 
 ## Architecture
 
@@ -205,6 +206,6 @@ The main runtime flow is:
 ## Notes
 
 - Static GTFS is cached at the path configured by `static_gtfs_cache_path`.
-- The monitor currently uses the configuration constant `VROLIKSTRAAT_CONFIG`.
+- The monitor currently uses the configuration constant `DEFAULT_CONFIG`.
 - The dashboard is terminal-based and redraws continuously.
-- The API currently loads and retains the full GTFS rows in memory at startup. That is the simplest reuse path, but it may need to be redesigned for smaller Fly machines.
+- The API loads and retains the rows from the bundled minimal GTFS zip at startup.

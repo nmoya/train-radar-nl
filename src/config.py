@@ -87,7 +87,7 @@ def with_static_gtfs_cache_path(
     return replace(config, static_gtfs_cache_path=static_gtfs_cache_path)
 
 
-VROLIKSTRAAT_CONFIG = AppConfig(
+DEFAULT_CONFIG = AppConfig(
     feed_url="https://gtfs-rt.r-ov.nl/trainUpdates.pb",
     static_gtfs_url="https://gtfs.ovapi.nl/nl/gtfs-nl.zip",
     static_gtfs_cache_path=MINIFIED_STATIC_GTFS_CACHE_PATH,

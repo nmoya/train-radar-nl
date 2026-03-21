@@ -8,7 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
-.cache
+.cache/*
+!.cache/gtfs-nl-min.zip
 .vscode
 .env
 

@@ -40,13 +40,11 @@ def test_train_radar_returns_payload_and_uses_cache(client: TestClient) -> None:
         )
 
     radar_service = client.app.state.radar_service
-    radar_service._cache.clear()
+    radar_service._cache = None
     radar_service._poller.update = fake_update
 
-    params = {"lat": 52.379028, "lon": 4.90125}
-
-    first_response = client.get("/train/radar", params=params)
-    second_response = client.get("/train/radar", params=params)
+    first_response = client.get("/train/radar")
+    second_response = client.get("/train/radar", params={"lat": 0, "lon": 0})
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
@@ -70,18 +68,23 @@ def test_train_radar_returns_payload_and_uses_cache(client: TestClient) -> None:
 
 
 def test_train_radar_returns_503_when_service_fails(client: TestClient) -> None:
-    def raise_error(latitude: float, longitude: float) -> None:
-        raise RuntimeError(f"cannot build status for {latitude},{longitude}")
+    def raise_error() -> None:
+        raise RuntimeError("cannot build status for default target")
 
     client.app.state.radar_service.get_status = raise_error
 
-    response = client.get("/train/radar", params={"lat": 52.379028, "lon": 4.90125})
-
-    assert response.status_code == 503
-    assert response.json() == {"detail": "cannot build status for 52.379028,4.90125"}
-
-
-def test_train_radar_requires_coordinates(client: TestClient) -> None:
     response = client.get("/train/radar")
 
-    assert response.status_code == 422
+    assert response.status_code == 503
+    assert response.json() == {"detail": "cannot build status for default target"}
+
+
+def test_train_radar_ignores_query_coordinates(client: TestClient) -> None:
+    response = client.get("/train/radar", params={"lat": 1.23, "lon": 4.56})
+
+    assert response.status_code == 200
+    assert response.json()["target"] == {
+        "latitude": 52.379028,
+        "longitude": 4.90125,
+        "radius_meters": 200,
+    }

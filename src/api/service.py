@@ -6,12 +6,7 @@ from dataclasses import dataclass
 
 import requests
 
-from src.config import (
-    AppConfig,
-    FULL_STATIC_GTFS_CACHE_PATH,
-    with_static_gtfs_cache_path,
-    with_target_coordinates,
-)
+from src.config import AppConfig
 from src.feed import FeedPoller
 from src.monitor_models import DirectionId, TrainStatus
 from src.monitor_snapshot_builder import MonitorSnapshotBuilder
@@ -35,12 +30,12 @@ class RadarApiService:
         *,
         cache_ttl_seconds: int = 30,
     ) -> None:
-        self._base_config = with_static_gtfs_cache_path(base_config, FULL_STATIC_GTFS_CACHE_PATH)
+        self._base_config = base_config
         self._cache_ttl_seconds = cache_ttl_seconds
         self._session = requests.Session()
         self._poller = FeedPoller(self._base_config, session=self._session)
         self._static_gtfs_rows: StaticGtfsRows | None = None
-        self._cache: dict[tuple[float, float], CacheEntry] = {}
+        self._cache: CacheEntry | None = None
         self._lock = threading.Lock()
 
     @property
@@ -66,43 +61,35 @@ class RadarApiService:
     def shutdown(self) -> None:
         self._poller.close()
 
-    def get_status(self, latitude: float, longitude: float) -> MonitorApiResponse:
-        normalized_key = (round(latitude, 6), round(longitude, 6))
+    def get_status(self) -> MonitorApiResponse:
         now = time.monotonic()
 
         with self._lock:
-            cached_entry = self._cache.get(normalized_key)
+            cached_entry = self._cache
             if cached_entry is not None and cached_entry.expires_at > now:
                 return cached_entry.response
 
-        response = self._build_status(*normalized_key)
+        response = self._build_status()
 
         with self._lock:
-            self._cache = {
-                key: entry for key, entry in self._cache.items() if entry.expires_at > now
-            }
-            self._cache[normalized_key] = CacheEntry(
+            self._cache = CacheEntry(
                 expires_at=now + self._cache_ttl_seconds,
                 response=response,
             )
 
         return response
 
-    def _build_status(self, latitude: float, longitude: float) -> MonitorApiResponse:
+    def _build_status(self) -> MonitorApiResponse:
         if self._static_gtfs_rows is None:
             raise RuntimeError("Static GTFS rows are not loaded.")
 
-        request_config = with_target_coordinates(
-            self._base_config,
-            target_lat=latitude,
-            target_lon=longitude,
-        )
-        static_gtfs = build_static_gtfs_data(self._static_gtfs_rows, request_config)
+        config = self._base_config
+        static_gtfs = build_static_gtfs_data(self._static_gtfs_rows, config)
         feed_update = self._poller.update()
         display_timestamp = int(time.time())
         snapshot = MonitorSnapshotBuilder(
             static_gtfs,
-            TargetPassageEstimator(request_config),
+            TargetPassageEstimator(config),
         ).build(feed_update)
         view = MonitorSnapshotView(snapshot=snapshot, display_timestamp=display_timestamp)
 
@@ -113,9 +100,9 @@ class RadarApiService:
             feed_timestamp=snapshot.feed_timestamp if snapshot is not None else None,
             feed_error=feed_update.error,
             target=TargetLocationResponse(
-                latitude=latitude,
-                longitude=longitude,
-                radius_meters=request_config.radius_meters,
+                latitude=config.target_lat,
+                longitude=config.target_lon,
+                radius_meters=config.radius_meters,
             ),
             current=DirectionBoardResponse(
                 left=self._build_train_response(
