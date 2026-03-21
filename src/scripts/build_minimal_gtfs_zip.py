@@ -9,6 +9,12 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import requests
+
+from src.config import DEFAULT_CONFIG, with_static_gtfs_cache_path
+from src.static_gtfs import ensure_static_gtfs_zip
+from tqdm import tqdm
+
 if __package__ in (None, ""):
     PROJECT_ROOT = Path(__file__).resolve().parents[2]
     if str(PROJECT_ROOT) not in sys.path:
@@ -146,6 +152,27 @@ def trim_row(row: dict[str, str], columns: tuple[str, ...]) -> dict[str, str]:
     return {column: row.get(column, "") for column in columns}
 
 
+def iter_progress(items: list[object], desc: str, unit: str = "row") -> tqdm:
+    return tqdm(
+        items,
+        total=len(items),
+        desc=desc,
+        unit=unit,
+        dynamic_ncols=True,
+        disable=not sys.stderr.isatty(),
+    )
+
+
+def ensure_source_gtfs_zip(input_path: Path) -> Path:
+    if input_path.exists():
+        return input_path
+
+    print(f"Source GTFS zip missing at {input_path}; downloading it first...")
+    config = with_static_gtfs_cache_path(DEFAULT_CONFIG, input_path)
+    with requests.Session() as session:
+        return ensure_static_gtfs_zip(session, config)
+
+
 def build_minimal_gtfs_zip(
     input_path: Path,
     output_path: Path,
@@ -154,6 +181,7 @@ def build_minimal_gtfs_zip(
     radius_meters: float,
     route_type: str,
 ) -> None:
+    input_path = ensure_source_gtfs_zip(input_path)
     print("Reading source GTFS zip and filtering for target location...")
     with zipfile.ZipFile(input_path) as source_zip:
         routes_rows = load_csv_rows(source_zip, "routes.txt")
@@ -162,23 +190,25 @@ def build_minimal_gtfs_zip(
         stops_rows = load_csv_rows(source_zip, "stops.txt")
         shapes_rows = load_csv_rows(source_zip, "shapes.txt")
 
-    print("Done")
-    routes = {
-        row["route_id"]: trim_row(row, ROUTES_COLUMNS)
-        for row in routes_rows
-        if row.get("route_id") and row.get("route_type") == route_type
-    }
+    routes: dict[str, dict[str, str]] = {}
+    for row in iter_progress(routes_rows, "Filtering routes"):
+        route_id = row.get("route_id")
+        if not route_id or row.get("route_type") != route_type:
+            continue
+        routes[route_id] = trim_row(row, ROUTES_COLUMNS)
 
-    candidate_trips = {
-        row["trip_id"]: trim_row(row, TRIPS_COLUMNS)
-        for row in trips_rows
-        if row.get("trip_id") and row.get("route_id") in routes and row.get("shape_id")
-    }
+    candidate_trips: dict[str, dict[str, str]] = {}
+    for row in iter_progress(trips_rows, "Filtering trips"):
+        trip_id = row.get("trip_id")
+        route_id = row.get("route_id")
+        if not trip_id or not route_id or route_id not in routes or not row.get("shape_id"):
+            continue
+        candidate_trips[trip_id] = trim_row(row, TRIPS_COLUMNS)
     candidate_shape_ids = {row["shape_id"] for row in candidate_trips.values()}
 
     shapes_by_id: dict[str, list[ShapePoint]] = {}
     nearest_shape_targets: dict[str, tuple[float, float]] = {}
-    for row in shapes_rows:
+    for row in iter_progress(shapes_rows, "Scanning shapes"):
         shape_id = row.get("shape_id")
         if not shape_id or shape_id not in candidate_shape_ids:
             continue
@@ -218,7 +248,7 @@ def build_minimal_gtfs_zip(
     candidate_trips = {trip_id: trip for trip_id, trip in candidate_trips.items() if trip["shape_id"] in kept_shape_ids}
 
     stop_times_by_trip: dict[str, list[StopTimePoint]] = {}
-    for row in stop_times_rows:
+    for row in iter_progress(stop_times_rows, "Filtering stop times"):
         trip_id = row.get("trip_id")
         if not trip_id or trip_id not in candidate_trips:
             continue
@@ -243,7 +273,7 @@ def build_minimal_gtfs_zip(
         stop_times.sort(key=lambda point: point.stop_sequence)
 
     valid_trip_ids: set[str] = set()
-    for trip_id, trip in candidate_trips.items():
+    for trip_id, trip in iter_progress(list(candidate_trips.items()), "Validating trips", unit="trip"):
         target_info = nearest_shape_targets.get(trip["shape_id"])
         trip_stop_times = stop_times_by_trip.get(trip_id)
         if target_info is None or not trip_stop_times:
@@ -260,11 +290,12 @@ def build_minimal_gtfs_zip(
     stop_times_by_trip = {
         trip_id: stop_times for trip_id, stop_times in stop_times_by_trip.items() if trip_id in valid_trip_ids
     }
-    stops = {
-        row["stop_id"]: trim_row(row, STOPS_COLUMNS)
-        for row in stops_rows
-        if row.get("stop_id")
-    }
+    stops: dict[str, dict[str, str]] = {}
+    for row in iter_progress(stops_rows, "Collecting stops"):
+        stop_id = row.get("stop_id")
+        if not stop_id:
+            continue
+        stops[stop_id] = trim_row(row, STOPS_COLUMNS)
     shapes_by_id = {shape_id: points for shape_id, points in shapes_by_id.items() if shape_id in shape_ids}
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
