@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.metadata
-import time
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -9,6 +8,7 @@ from fastapi import APIRouter, Request
 from src.api.models import AppConfigResponse, HealthResponse, RadarServiceResponse
 from src.api.service import RadarApiService
 from src.config import PROJECT_ROOT
+from src.time_utils import format_unix_timestamp as format_timestamp_in_timezone
 
 router = APIRouter()
 DEPLOYED_COMMIT_PATH = PROJECT_ROOT / ".build-commit"
@@ -24,8 +24,8 @@ def list_installed_dependencies() -> list[str]:
     return sorted(set(dependencies), key=str.lower)
 
 
-def format_unix_timestamp(timestamp: int) -> str:
-    return time.strftime("%Y-%m-%d %H:%M:%S %Z", time.localtime(timestamp))
+def format_unix_timestamp(timestamp: int, timezone_name: str) -> str:
+    return format_timestamp_in_timezone(timestamp, timezone_name, "%Y-%m-%d %H:%M:%S %Z")
 
 
 def read_deployed_commit(path: Path = DEPLOYED_COMMIT_PATH) -> str | None:
@@ -57,8 +57,9 @@ def health(request: Request) -> HealthResponse:
             target_passage_tolerance_ceiling_seconds=config.target_passage_tolerance_ceiling_seconds,
             target_passage_tolerance_factor=config.target_passage_tolerance_factor,
             target_passage_sparse_update_tolerance_factor=config.target_passage_sparse_update_tolerance_factor,
+            timezone_name=config.timezone_name,
             user_agent=config.user_agent,
-            startup_time=format_unix_timestamp(config.startup_time),
+            startup_time=format_unix_timestamp(config.startup_time, config.timezone_name),
         ),
         dependencies=list_installed_dependencies(),
     )

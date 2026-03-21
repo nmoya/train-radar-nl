@@ -9,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOTENV_PATH = PROJECT_ROOT / ".env"
 TARGET_LAT = "TARGET_LATITUDE"
 TARGET_LON = "TARGET_LONGITUDE"
+APP_TIMEZONE = "APP_TIMEZONE"
 FULL_STATIC_GTFS_CACHE_PATH = PROJECT_ROOT / ".cache" / "gtfs-nl.zip"
 MINIFIED_STATIC_GTFS_CACHE_PATH = PROJECT_ROOT / ".cache" / "gtfs-nl-min.zip"
 
@@ -44,6 +45,22 @@ def read_float_env(name: str, default: float | None = None) -> float:
         raise ValueError(f"Environment variable {name} must be a float, got {raw_value!r}.") from exc
 
 
+def read_str_env(name: str, default: str | None = None) -> str:
+    """Read a string environment variable with a default fallback."""
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        if default is not None:
+            return default
+        raise ValueError(f"Environment variable {name} is not set and no default provided.")
+
+    value = raw_value.strip()
+    if value:
+        return value
+    if default is not None:
+        return default
+    raise ValueError(f"Environment variable {name} is empty and no default provided.")
+
+
 load_dotenv(DOTENV_PATH)
 
 
@@ -59,6 +76,7 @@ class AppConfig:
     target_passage_tolerance_ceiling_seconds: int
     target_passage_tolerance_factor: float
     target_passage_sparse_update_tolerance_factor: float
+    timezone_name: str
     user_agent: str
     startup_time: int = field(default_factory=lambda: int(time.time()))
 
@@ -96,5 +114,6 @@ DEFAULT_CONFIG = AppConfig(
     target_passage_tolerance_ceiling_seconds=60,
     target_passage_tolerance_factor=0.1,
     target_passage_sparse_update_tolerance_factor=0.5,
+    timezone_name=read_str_env(APP_TIMEZONE, "UTC"),
     user_agent="train-radar-nl",
 )

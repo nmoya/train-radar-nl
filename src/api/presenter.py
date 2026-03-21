@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import time
 from typing import Protocol
 
 from src.config import AppConfig
 from src.monitor_models import DirectionId, TrainStatus
 from src.snapshot_view import MonitorSnapshotView
+from src.time_utils import format_unix_timestamp
 
 from .models import DirectionBoardResponse, MonitorApiResponse, TargetLocationResponse, TrainStatusResponse
 
@@ -21,6 +21,7 @@ class CachedMonitorStatusLike(Protocol):
 def build_train_response(
     train_status: TrainStatus | None,
     display_timestamp: int,
+    config: AppConfig,
 ) -> TrainStatusResponse | None:
     if train_status is None:
         return None
@@ -41,7 +42,11 @@ def build_train_response(
         progress_percent=None if progress_ratio is None else round(progress_ratio * 100),
         distance_to_target_m=train_status.estimated_distance_to_target_m(display_timestamp),
         estimated_target_timestamp=train_status.estimated_target_time,
-        estimated_target_time=time.strftime("%H:%M:%S", time.localtime(train_status.estimated_target_time)),
+        estimated_target_time=format_unix_timestamp(
+            train_status.estimated_target_time,
+            config.timezone_name,
+            "%H:%M:%S",
+        ),
         range_start_timestamp=train_status.range_start_time,
         range_end_timestamp=train_status.range_end_time,
         seconds_until_target=train_status.estimated_target_time - display_timestamp,
@@ -74,20 +79,24 @@ def build_monitor_api_response(
             left=build_train_response(
                 view.select_current_train(DirectionId.left),
                 display_timestamp,
+                config,
             ),
             right=build_train_response(
                 view.select_current_train(DirectionId.right),
                 display_timestamp,
+                config,
             ),
         ),
         upcoming=DirectionBoardResponse(
             left=build_train_response(
                 view.select_next_upcoming_train(DirectionId.left),
                 display_timestamp,
+                config,
             ),
             right=build_train_response(
                 view.select_next_upcoming_train(DirectionId.right),
                 display_timestamp,
+                config,
             ),
         ),
         target_stop_pairs=cached_status.target_stop_pairs,

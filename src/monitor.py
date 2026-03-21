@@ -12,6 +12,7 @@ from src.monitor_snapshot_builder import MonitorSnapshotBuilder
 from src.snapshot_view import MonitorSnapshotView
 from src.static_gtfs import StaticGtfsData
 from src.target_passage import TargetPassageEstimator
+from src.time_utils import format_unix_timestamp
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,11 @@ class MonitorRenderer:
 
     def build_lines(self) -> list[str]:
         """Build the terminal view as plain text lines for the current display tick."""
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.display_timestamp))
+        timestamp = format_unix_timestamp(
+            self.display_timestamp,
+            self.config.timezone_name,
+            "%Y-%m-%d %H:%M:%S",
+        )
         lines = [
             f"[{timestamp}] Next poll in {self.next_poll_in_seconds}s",
             *self.build_header_lines(),
@@ -103,8 +108,8 @@ class MonitorRenderer:
         return f"{remaining_seconds}s"
 
     def format_unix_timestamp(self, timestamp: int) -> str:
-        """Format a Unix timestamp as local HH:MM:SS."""
-        return time.strftime("%H:%M:%S", time.localtime(timestamp))
+        """Format a Unix timestamp as HH:MM:SS in the configured timezone."""
+        return format_unix_timestamp(timestamp, self.config.timezone_name, "%H:%M:%S")
 
     def format_trip_progress(self, status: TrainStatus) -> str:
         """Format the estimated current trip progress as a percentage string."""

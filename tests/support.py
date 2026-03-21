@@ -31,6 +31,7 @@ def make_config(cache_path: Path, **overrides: object) -> AppConfig:
         "target_passage_tolerance_ceiling_seconds": 60,
         "target_passage_tolerance_factor": 0.1,
         "target_passage_sparse_update_tolerance_factor": 0.5,
+        "timezone_name": "Europe/Amsterdam",
         "user_agent": "train-radar-nl-tests",
         "startup_time": 1_700_000_000,
     }

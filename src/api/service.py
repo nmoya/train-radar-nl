@@ -111,4 +111,4 @@ class RadarApiService:
         train_status: TrainStatus | None,
         display_timestamp: int,
     ) -> TrainStatusResponse | None:
-        return build_train_response(train_status, display_timestamp)
+        return build_train_response(train_status, display_timestamp, self.base_config)

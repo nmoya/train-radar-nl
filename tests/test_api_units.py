@@ -52,6 +52,7 @@ def test_api_models_support_expected_defaults() -> None:
             target_passage_tolerance_ceiling_seconds=60,
             target_passage_tolerance_factor=0.1,
             target_passage_sparse_update_tolerance_factor=0.5,
+            timezone_name="Europe/Amsterdam",
             user_agent="ua",
             startup_time="now",
         ),
@@ -180,7 +181,11 @@ def test_health_route_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, a
     monkeypatch.setattr(health_module.importlib.metadata, "distributions", lambda: distributions)
 
     assert health_module.list_installed_dependencies() == ["a==1", "B==2"]
-    assert health_module.format_unix_timestamp(0).startswith("1970-01-01")
+    assert health_module.format_unix_timestamp(0, "UTC") == "1970-01-01 00:00:00 UTC"
+    assert (
+        health_module.format_unix_timestamp(0, "Europe/Amsterdam")
+        == "1970-01-01 01:00:00 CET"
+    )
 
     commit_path = tmp_path / ".build-commit"
     assert health_module.read_deployed_commit(commit_path) is None
@@ -202,6 +207,7 @@ def test_health_route_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, a
     assert response.deployed_commit == "sha"
     assert response.radar_service.static_gtfs_ready is True
     assert response.app_config.target_lat == app_config.target_lat
+    assert response.app_config.timezone_name == app_config.timezone_name
 
 
 def test_train_route_returns_status_and_wraps_errors() -> None:
