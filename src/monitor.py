@@ -10,7 +10,7 @@ from src.feed import FeedPoller
 from src.monitor_models import DirectionId, MonitorSnapshot, TrainStatus
 from src.monitor_snapshot_builder import MonitorSnapshotBuilder
 from src.snapshot_view import MonitorSnapshotView
-from src.static_gtfs import StaticGtfsData, TargetWindow
+from src.static_gtfs import StaticGtfsData
 from src.target_passage import TargetPassageEstimator
 
 
@@ -106,9 +106,9 @@ class MonitorRenderer:
         """Format a Unix timestamp as local HH:MM:SS."""
         return time.strftime("%H:%M:%S", time.localtime(timestamp))
 
-    def format_trip_progress(self, target_window: TargetWindow) -> str:
-        """Format trip progress through the monitored target as a percentage string."""
-        progress_ratio = target_window.trip_progress_ratio()
+    def format_trip_progress(self, status: TrainStatus) -> str:
+        """Format the estimated current trip progress as a percentage string."""
+        progress_ratio = status.estimated_trip_progress_ratio(self.display_timestamp)
         if progress_ratio is None:
             return "?%"
         return f"{round(progress_ratio * 100)}%"
@@ -148,15 +148,21 @@ class MonitorRenderer:
                 timing = f"late by {self.format_duration(self.display_timestamp - status.estimated_target_time)}"
             else:
                 timing = f"ETA {self.format_unix_timestamp(status.estimated_target_time)}"
-            context_suffix = f"{round(status.distance_m)}m to target"
+            estimated_distance_m = round(status.estimated_distance_to_target_m(self.display_timestamp))
+            context_suffix = (
+                f"{estimated_distance_m}m from target"
+                if self.display_timestamp > status.estimated_target_time
+                else f"{estimated_distance_m}m to target"
+            )
         else:
             seconds_until_range = max(status.range_start_time - self.display_timestamp, 0)
             timing = f"in {self.format_duration(seconds_until_range)}"
-            context_suffix = f"Expected {self.format_unix_timestamp(status.estimated_target_time)}"
+            estimated_distance_m = round(status.estimated_distance_to_target_m(self.display_timestamp))
+            context_suffix = f"Expected {self.format_unix_timestamp(status.estimated_target_time)}  ~{estimated_distance_m}m away"
 
         return [
             f"{row_prefix}{status.service_label()}  {timing}",
-            f"{detail_prefix}{status.route_label()} ({self.format_trip_progress(status.target_window)} completed)",
+            f"{detail_prefix}{status.route_label()} ({self.format_trip_progress(status)} completed)",
             f"{detail_prefix}{status.stop_context_label()}  {context_suffix}",
         ]
 

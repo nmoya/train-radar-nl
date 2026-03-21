@@ -67,7 +67,7 @@ def api_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
             error="stubbed feed update",
         )
 
-    monkeypatch.setattr(app.state.radar_service._poller, "update", fake_update)
+    monkeypatch.setattr(app.state.radar_service.poller, "update", fake_update)
     return app
 
 

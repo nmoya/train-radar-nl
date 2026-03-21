@@ -39,8 +39,17 @@ def test_evaluate_train_entity_builds_status(tmp_path, monkeypatch) -> None:
     entity = make_entity(trip_id="trip-1")
 
     monkeypatch.setattr(builder_module, "is_train_vehicle", lambda entity, static_gtfs: True)
-    monkeypatch.setattr(builder.estimator, "estimate_trip_target_time", lambda trip_update, target_window: 150)
-    monkeypatch.setattr(builder.estimator, "estimate_target_tolerance_seconds", lambda trip_update, target_window: 20)
+    monkeypatch.setattr(builder.estimator, "extract_target_window_event_times", lambda trip_update, target_window: (90, 210))
+    monkeypatch.setattr(
+        builder.estimator,
+        "estimate_target_time_from_events",
+        lambda previous_time, next_time, target_window: 150,
+    )
+    monkeypatch.setattr(
+        builder.estimator,
+        "estimate_target_tolerance_seconds_from_events",
+        lambda previous_time, next_time, target_window: 20,
+    )
     monkeypatch.setattr(builder.estimator, "estimate_range_start_time", lambda estimated_target_time, tolerance: 115)
     monkeypatch.setattr(
         builder_module,
@@ -52,7 +61,9 @@ def test_evaluate_train_entity_builds_status(tmp_path, monkeypatch) -> None:
 
     assert status is not None
     assert status.direction_id == "1"
+    assert status.previous_stop_time == 90
     assert status.estimated_target_time == 150
+    assert status.next_stop_time == 210
     assert status.range_start_time == 115
     assert status.range_end_time == 170
 
@@ -69,7 +80,12 @@ def test_evaluate_train_entity_skips_unusable_entities(tmp_path, monkeypatch) ->
     assert builder.evaluate_train_entity(entity, 100) is None
 
     entity = make_entity(trip_id="trip-1")
-    monkeypatch.setattr(builder.estimator, "estimate_trip_target_time", lambda trip_update, target_window: None)
+    monkeypatch.setattr(builder.estimator, "extract_target_window_event_times", lambda trip_update, target_window: (90, 210))
+    monkeypatch.setattr(
+        builder.estimator,
+        "estimate_target_time_from_events",
+        lambda previous_time, next_time, target_window: None,
+    )
     assert builder.evaluate_train_entity(entity, 100) is None
 
 
@@ -83,8 +99,9 @@ def test_build_monitor_snapshot_groups_and_sorts(tmp_path) -> None:
         direction_id="0",
         vehicle_details=make_vehicle_details(direction_id="0"),
         target_window=make_static_gtfs_data().target_windows["trip-1"],
-        distance_m=40.0,
+        previous_stop_time=100,
         estimated_target_time=130,
+        next_stop_time=160,
         range_start_time=120,
         range_end_time=140,
     )
@@ -93,8 +110,9 @@ def test_build_monitor_snapshot_groups_and_sorts(tmp_path) -> None:
         direction_id="0",
         vehicle_details=make_vehicle_details(direction_id="0"),
         target_window=make_static_gtfs_data().target_windows["trip-1"],
-        distance_m=40.0,
+        previous_stop_time=90,
         estimated_target_time=120,
+        next_stop_time=150,
         range_start_time=110,
         range_end_time=130,
     )
@@ -103,8 +121,9 @@ def test_build_monitor_snapshot_groups_and_sorts(tmp_path) -> None:
         direction_id="1",
         vehicle_details=make_vehicle_details(direction_id="1"),
         target_window=make_static_gtfs_data().target_windows["trip-2"],
-        distance_m=40.0,
+        previous_stop_time=110,
         estimated_target_time=140,
+        next_stop_time=170,
         range_start_time=135,
         range_end_time=150,
     )

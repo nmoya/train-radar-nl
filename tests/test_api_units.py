@@ -50,10 +50,8 @@ def test_api_models_support_expected_defaults() -> None:
             radius_meters=200,
             poll_interval_seconds=30,
             target_passage_tolerance_ceiling_seconds=60,
-            target_passage_tolerance_floor_seconds=20,
             target_passage_tolerance_factor=0.1,
-            target_passage_directional_tolerance_factor=0.5,
-            target_passage_alert_lead_seconds=15,
+            target_passage_sparse_update_tolerance_factor=0.5,
             user_agent="ua",
             startup_time="now",
         ),
@@ -113,6 +111,8 @@ def test_radar_api_service_build_status_and_train_response(app_config, monkeypat
     train_status = make_train_status(
         vehicle_details=make_vehicle_details(direction_id="0"),
         estimated_target_time=170,
+        previous_stop_time=1_700_000_050,
+        next_stop_time=1_700_000_150,
         range_start_time=120,
         range_end_time=190,
     )
@@ -137,7 +137,7 @@ def test_radar_api_service_build_status_and_train_response(app_config, monkeypat
     assert response.feed_timestamp == 160
     assert response.feed_error == "warn"
     assert response.current.left.service == "NS intercity"
-    assert response.current.left.progress_percent == 50
+    assert response.current.left.progress_percent == 33
     assert response.current.left.seconds_until_target == 20
     assert response.target.latitude == app_config.target_lat
     assert response.target.longitude == app_config.target_lon

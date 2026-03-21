@@ -17,11 +17,7 @@ class TargetPassageEstimator:
     ) -> int | None:
         """Estimate the target passage time from the realtime stop updates around the target."""
         previous_time, next_time = self.extract_target_window_event_times(trip_update, target_window)
-
-        if previous_time is None or next_time is None:
-            return None
-
-        return target_window.estimate_target_time(previous_time, next_time)
+        return self.estimate_target_time_from_events(previous_time, next_time, target_window)
 
     def estimate_target_tolerance_seconds(
         self,
@@ -30,6 +26,26 @@ class TargetPassageEstimator:
     ) -> int:
         """Estimate the alert window around the target passage time."""
         previous_time, next_time = self.extract_target_window_event_times(trip_update, target_window)
+        return self.estimate_target_tolerance_seconds_from_events(previous_time, next_time, target_window)
+
+    def estimate_target_time_from_events(
+        self,
+        previous_time: int | None,
+        next_time: int | None,
+        target_window: TargetWindow,
+    ) -> int | None:
+        if previous_time is None or next_time is None:
+            return None
+
+        return target_window.estimate_target_time(previous_time, next_time)
+
+    def estimate_target_tolerance_seconds_from_events(
+        self,
+        previous_time: int | None,
+        next_time: int | None,
+        target_window: TargetWindow,
+    ) -> int:
+        """Estimate the alert window around the target passage time."""
 
         if previous_time is None or next_time is None:
             return self.config.target_passage_tolerance_ceiling_seconds
@@ -38,17 +54,14 @@ class TargetPassageEstimator:
         dynamic_tolerance_seconds = round(
             segment_duration_seconds * self.config.target_passage_tolerance_factor
         )
-        directional_tolerance_seconds = round(
-            dynamic_tolerance_seconds * self.estimate_directional_tolerance_multiplier(target_window)
+        sparse_update_tolerance_seconds = round(
+            dynamic_tolerance_seconds * self.estimate_sparse_update_tolerance_multiplier(segment_duration_seconds)
         )
         return max(
-            max(
-                self.config.target_passage_tolerance_floor_seconds,
-                self.config.poll_interval_seconds,
-            ),
+            self.config.poll_interval_seconds,
             min(
                 self.config.target_passage_tolerance_ceiling_seconds,
-                directional_tolerance_seconds,
+                sparse_update_tolerance_seconds,
             ),
         )
 
@@ -57,19 +70,20 @@ class TargetPassageEstimator:
         estimated_target_time: int,
         tolerance_seconds: int,
     ) -> int:
-        """Return the start of the alert window, including configured early lead time."""
-        early_tolerance_seconds = tolerance_seconds + self.config.target_passage_alert_lead_seconds
-        return estimated_target_time - early_tolerance_seconds
+        """Return the symmetric start of the alert window around the target passage time."""
+        return estimated_target_time - tolerance_seconds
 
-    def estimate_directional_tolerance_multiplier(
+    def estimate_sparse_update_tolerance_multiplier(
         self,
-        target_window: TargetWindow,
+        segment_duration_seconds: int,
     ) -> float:
-        """Scale tolerance based on how far into the trip the target lies."""
-        progress_ratio = target_window.trip_progress_ratio()
-        if progress_ratio is None:
+        """Scale tolerance up for long interpolation spans with sparse realtime updates."""
+        if segment_duration_seconds <= self.config.poll_interval_seconds:
             return 1.0
-        return 1.0 + (progress_ratio * self.config.target_passage_directional_tolerance_factor)
+
+        poll_intervals_spanned = segment_duration_seconds / self.config.poll_interval_seconds
+        extra_intervals = max(poll_intervals_spanned - 1.0, 0.0)
+        return 1.0 + (extra_intervals * self.config.target_passage_sparse_update_tolerance_factor)
 
     def extract_target_window_event_times(
         self,

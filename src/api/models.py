@@ -12,10 +12,8 @@ class AppConfigResponse(BaseModel):
     radius_meters: int
     poll_interval_seconds: int
     target_passage_tolerance_ceiling_seconds: int
-    target_passage_tolerance_floor_seconds: int
     target_passage_tolerance_factor: float
-    target_passage_directional_tolerance_factor: float
-    target_passage_alert_lead_seconds: int
+    target_passage_sparse_update_tolerance_factor: float
     user_agent: str
     startup_time: str
 

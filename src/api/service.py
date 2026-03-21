@@ -113,7 +113,7 @@ class RadarApiService:
         if train_status is None:
             return None
 
-        progress_ratio = train_status.target_window.trip_progress_ratio()
+        progress_ratio = train_status.estimated_trip_progress_ratio(display_timestamp)
         return TrainStatusResponse(
             service=train_status.service_label(),
             company=train_status.vehicle_details.train_company,
@@ -127,7 +127,7 @@ class RadarApiService:
             next_stop=train_status.vehicle_details.next_stop,
             direction_id=train_status.direction_id,
             progress_percent=None if progress_ratio is None else round(progress_ratio * 100),
-            distance_to_target_m=train_status.distance_m,
+            distance_to_target_m=train_status.estimated_distance_to_target_m(display_timestamp),
             estimated_target_timestamp=train_status.estimated_target_time,
             estimated_target_time=time.strftime("%H:%M:%S", time.localtime(train_status.estimated_target_time)),
             range_start_timestamp=train_status.range_start_time,

@@ -62,15 +62,21 @@ class MonitorSnapshotBuilder:
         if target_window is None:
             return None
 
-        estimated_target_time = self.estimator.estimate_trip_target_time(
+        previous_stop_time, next_stop_time = self.estimator.extract_target_window_event_times(
             entity.trip_update,
+            target_window,
+        )
+        estimated_target_time = self.estimator.estimate_target_time_from_events(
+            previous_stop_time,
+            next_stop_time,
             target_window,
         )
         if estimated_target_time is None:
             return None
 
-        tolerance_seconds = self.estimator.estimate_target_tolerance_seconds(
-            entity.trip_update,
+        tolerance_seconds = self.estimator.estimate_target_tolerance_seconds_from_events(
+            previous_stop_time,
+            next_stop_time,
             target_window,
         )
         vehicle_details = resolve_vehicle_details(entity, self.static_gtfs, feed_timestamp)
@@ -84,8 +90,9 @@ class MonitorSnapshotBuilder:
             direction_id=vehicle_details.direction_id,
             vehicle_details=vehicle_details,
             target_window=target_window,
-            distance_m=target_window.distance_to_target_m,
+            previous_stop_time=previous_stop_time,
             estimated_target_time=estimated_target_time,
+            next_stop_time=next_stop_time,
             range_start_time=range_start_time,
             range_end_time=range_end_time,
         )

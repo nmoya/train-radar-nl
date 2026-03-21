@@ -14,10 +14,18 @@ from .support import make_config, make_feed_update, make_snapshot, make_static_g
 
 
 def test_monitor_renderer_formats_lines(app_config, sample_static_gtfs_data) -> None:
-    current = make_train_status(estimated_target_time=110, range_start_time=90, range_end_time=130)
+    current = make_train_status(
+        previous_stop_time=90,
+        estimated_target_time=110,
+        next_stop_time=130,
+        range_start_time=90,
+        range_end_time=130,
+    )
     upcoming = make_train_status(
         entity_key="next",
+        previous_stop_time=140,
         estimated_target_time=170,
+        next_stop_time=200,
         range_start_time=150,
         range_end_time=190,
     )
@@ -38,9 +46,13 @@ def test_monitor_renderer_formats_lines(app_config, sample_static_gtfs_data) -> 
     assert "Current" in lines
     assert any("ETA" in line for line in lines)
     assert any("in 50s" in line for line in lines)
+    assert any("25m to target" in line for line in lines)
+    assert any("~50m away" in line for line in lines)
+    assert any("(42% completed)" in line for line in lines)
+    assert any("(33% completed)" in line for line in lines)
     assert renderer.format_duration(3661) == "1h 01m 01s"
     assert renderer.format_duration(125) == "2m 05s"
-    assert renderer.format_trip_progress(current.target_window) == "50%"
+    assert renderer.format_trip_progress(current) == "42%"
 
 
 def test_monitor_renderer_handles_missing_static_gtfs_and_no_trains(app_config) -> None:

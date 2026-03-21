@@ -57,10 +57,8 @@ class AppConfig:
     radius_meters: int
     poll_interval_seconds: int
     target_passage_tolerance_ceiling_seconds: int
-    target_passage_tolerance_floor_seconds: int
     target_passage_tolerance_factor: float
-    target_passage_directional_tolerance_factor: float
-    target_passage_alert_lead_seconds: int
+    target_passage_sparse_update_tolerance_factor: float
     user_agent: str
     startup_time: int = field(default_factory=lambda: int(time.time()))
 
@@ -96,9 +94,7 @@ DEFAULT_CONFIG = AppConfig(
     radius_meters=200,
     poll_interval_seconds=30,
     target_passage_tolerance_ceiling_seconds=60,
-    target_passage_tolerance_floor_seconds=20,
     target_passage_tolerance_factor=0.1,
-    target_passage_directional_tolerance_factor=0.5,
-    target_passage_alert_lead_seconds=15,
+    target_passage_sparse_update_tolerance_factor=0.5,
     user_agent="train-radar-nl",
 )

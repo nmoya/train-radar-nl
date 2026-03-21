@@ -160,8 +160,9 @@ def test_target_passage_estimator_derives_times_and_tolerances(app_config) -> No
 
     assert estimator.estimate_trip_target_time(trip_update, target_window) == 150
     assert estimator.estimate_target_tolerance_seconds(trip_update, target_window) == 30
-    assert estimator.estimate_range_start_time(150, 30) == 105
-    assert estimator.estimate_directional_tolerance_multiplier(target_window) == 1.375
+    assert estimator.estimate_range_start_time(150, 30) == 120
+    assert estimator.estimate_sparse_update_tolerance_multiplier(30) == 1.0
+    assert estimator.estimate_sparse_update_tolerance_multiplier(90) == 2.0
 
 
 def test_target_passage_estimator_handles_missing_times(app_config) -> None:

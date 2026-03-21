@@ -54,18 +54,30 @@ class StopTimeInfo:
 
 
 @dataclass(frozen=True)
+class ShapePoint:
+    shape_dist: float
+    lat: float
+    lon: float
+    path_m: float
+
+
+@dataclass(frozen=True)
 class TargetWindow:
     distance_to_target_m: float
     target_shape_dist: float
     trip_total_shape_dist: float
+    trip_total_path_m: float
     previous_stop_sequence: int
     previous_stop_id: str
     previous_stop_name: str
     previous_stop_shape_dist: float
+    previous_stop_path_m: float
     next_stop_sequence: int
     next_stop_id: str
     next_stop_name: str
     next_stop_shape_dist: float
+    next_stop_path_m: float
+    target_path_m: float
 
     def trip_progress_ratio(self) -> float | None:
         """Return target progress through the trip shape as a 0..1 ratio."""
@@ -239,6 +251,7 @@ def build_static_gtfs_data(
         trips=trips,
         stops=stops,
         stop_times=stop_times,
+        shapes=shapes,
         shape_targets=shape_targets,
     )
 
@@ -329,6 +342,7 @@ def build_target_windows(
     trips: dict[str, TripInfo],
     stops: dict[str, StopInfo],
     stop_times: dict[str, list[StopTimeInfo]],
+    shapes: dict[str, list[ShapePoint]],
     shape_targets: dict[str, tuple[float, float]],
 ) -> dict[str, TargetWindow]:
     target_windows: dict[str, TargetWindow] = {}
@@ -336,7 +350,8 @@ def build_target_windows(
     for trip_id, trip in trips.items():
         trip_stop_times = stop_times.get(trip_id)
         shape_target = shape_targets.get(trip.shape_id)
-        if trip_stop_times is None or shape_target is None:
+        shape_points = shapes.get(trip.shape_id)
+        if trip_stop_times is None or shape_target is None or shape_points is None:
             continue
 
         distance_to_target_m, target_shape_dist = shape_target
@@ -351,21 +366,25 @@ def build_target_windows(
             distance_to_target_m=distance_to_target_m,
             target_shape_dist=target_shape_dist,
             trip_total_shape_dist=trip_stop_times[-1].shape_dist_traveled,
+            trip_total_path_m=interpolate_path_m(shape_points, trip_stop_times[-1].shape_dist_traveled),
             previous_stop_sequence=previous_stop.stop_sequence,
             previous_stop_id=previous_stop.stop_id,
             previous_stop_name=resolve_stop_name(stops, previous_stop.stop_id) or "?",
             previous_stop_shape_dist=previous_stop.shape_dist_traveled,
+            previous_stop_path_m=interpolate_path_m(shape_points, previous_stop.shape_dist_traveled),
             next_stop_sequence=next_stop.stop_sequence,
             next_stop_id=next_stop.stop_id,
             next_stop_name=resolve_stop_name(stops, next_stop.stop_id) or "?",
             next_stop_shape_dist=next_stop.shape_dist_traveled,
+            next_stop_path_m=interpolate_path_m(shape_points, next_stop.shape_dist_traveled),
+            target_path_m=interpolate_path_m(shape_points, target_shape_dist),
         )
 
     return target_windows
 
 
-def load_shapes(shape_rows: list[dict[str, str]]) -> dict[str, list[tuple[float, float, float]]]:
-    shapes: dict[str, list[tuple[float, float, float]]] = {}
+def load_shapes(shape_rows: list[dict[str, str]]) -> dict[str, list[ShapePoint]]:
+    raw_shapes: dict[str, list[tuple[float, float, float]]] = {}
 
     for row in shape_rows:
         shape_id = row.get("shape_id")
@@ -379,17 +398,38 @@ def load_shapes(shape_rows: list[dict[str, str]]) -> dict[str, list[tuple[float,
         except (KeyError, ValueError):
             continue
 
-        shapes.setdefault(shape_id, []).append((shape_dist, lat, lon))
+        raw_shapes.setdefault(shape_id, []).append((shape_dist, lat, lon))
 
-    for points in shapes.values():
-        points.sort(key=lambda item: item[0])
+    shapes: dict[str, list[ShapePoint]] = {}
+    for shape_id, points in raw_shapes.items():
+        sorted_points = sorted(points, key=lambda item: item[0])
+        path_m = 0.0
+        shape_points: list[ShapePoint] = []
+        previous_lat: float | None = None
+        previous_lon: float | None = None
+
+        for shape_dist, lat, lon in sorted_points:
+            if previous_lat is not None and previous_lon is not None:
+                path_m += haversine_m(previous_lat, previous_lon, lat, lon)
+            shape_points.append(
+                ShapePoint(
+                    shape_dist=shape_dist,
+                    lat=lat,
+                    lon=lon,
+                    path_m=path_m,
+                )
+            )
+            previous_lat = lat
+            previous_lon = lon
+
+        shapes[shape_id] = shape_points
 
     return shapes
 
 
 def build_shape_targets(
     config: AppConfig,
-    shapes: dict[str, list[tuple[float, float, float]]],
+    shapes: dict[str, list[ShapePoint]],
 ) -> dict[str, tuple[float, float]]:
     shape_targets: dict[str, tuple[float, float]] = {}
 
@@ -397,15 +437,38 @@ def build_shape_targets(
         nearest_distance = float("inf")
         nearest_shape_dist = 0.0
 
-        for shape_dist, lat, lon in points:
-            distance = haversine_m(config.target_lat, config.target_lon, lat, lon)
+        for point in points:
+            distance = haversine_m(config.target_lat, config.target_lon, point.lat, point.lon)
             if distance < nearest_distance:
                 nearest_distance = distance
-                nearest_shape_dist = shape_dist
+                nearest_shape_dist = point.shape_dist
 
         shape_targets[shape_id] = (nearest_distance, nearest_shape_dist)
 
     return shape_targets
+
+
+def interpolate_path_m(points: list[ShapePoint], shape_dist: float) -> float:
+    if not points:
+        return 0.0
+
+    first_point = points[0]
+    if shape_dist <= first_point.shape_dist:
+        return first_point.path_m
+
+    previous_point = first_point
+    for current_point in points[1:]:
+        if shape_dist <= current_point.shape_dist:
+            span = current_point.shape_dist - previous_point.shape_dist
+            if span <= 0:
+                return current_point.path_m
+
+            ratio = (shape_dist - previous_point.shape_dist) / span
+            return previous_point.path_m + ((current_point.path_m - previous_point.path_m) * ratio)
+
+        previous_point = current_point
+
+    return points[-1].path_m
 
 
 def find_bracketing_stops(

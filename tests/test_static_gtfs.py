@@ -9,6 +9,7 @@ from google.transit import gtfs_realtime_pb2
 
 import src.static_gtfs as static_gtfs
 from src.static_gtfs import (
+    ShapePoint,
     StaticGtfsRows,
     StopTimeInfo,
     TargetWindow,
@@ -20,6 +21,7 @@ from src.static_gtfs import (
     get_content_length,
     infer_train_company,
     infer_train_type,
+    interpolate_path_m,
     is_train_vehicle,
     load_shapes,
     normalize_agency,
@@ -81,6 +83,7 @@ def test_build_static_gtfs_data_filters_non_rail_and_builds_windows(app_config) 
     assert set(data.trips) == {"trip-1", "trip-2"}
     assert data.endpoints["trip-1"].origin_stop_id == "stop-a"
     assert data.target_windows["trip-1"].previous_stop_name == "Beta"
+    assert data.target_windows["trip-1"].target_path_m > data.target_windows["trip-1"].previous_stop_path_m
     assert data.summarize_target_stop_pairs() == ["Beta -> Alpha", "Beta -> Gamma"]
 
 
@@ -111,7 +114,8 @@ def test_shape_and_stop_helpers(app_config) -> None:
         150.0,
     )
 
-    assert shapes["shape-1"][0][0] == 0.0
+    assert shapes["shape-1"][0].shape_dist == 0.0
+    assert shapes["shape-1"][1].path_m > 60.0
     assert targets["shape-1"][1] == 100.0
     assert previous_stop.stop_id == "b"
     assert next_stop.stop_id == "c"
@@ -129,10 +133,28 @@ def test_build_target_windows_skips_out_of_radius_or_missing_brackets(app_config
                 StopTimeInfo(3, "stop-c", 200.0),
             ]
         },
+        shapes={
+            "shape-1": [
+                ShapePoint(0.0, 52.0, 4.0, 0.0),
+                ShapePoint(100.0, 52.0, 4.001, 100.0),
+                ShapePoint(200.0, 52.0, 4.002, 200.0),
+            ]
+        },
         shape_targets={"shape-1": (100.0, 150.0)},
     )
 
     assert target_windows == {}
+
+
+def test_interpolate_path_m_interpolates_between_shape_points() -> None:
+    points = [
+        ShapePoint(0.0, 52.0, 4.0, 0.0),
+        ShapePoint(100.0, 52.0, 4.001, 75.0),
+        ShapePoint(200.0, 52.0, 4.002, 150.0),
+    ]
+
+    assert interpolate_path_m(points, 50.0) == 37.5
+    assert interpolate_path_m(points, 150.0) == 112.5
 
 
 def test_trip_and_stop_resolution_helpers(sample_static_gtfs_data) -> None:

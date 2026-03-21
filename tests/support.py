@@ -29,10 +29,8 @@ def make_config(cache_path: Path, **overrides: object) -> AppConfig:
         "radius_meters": 200,
         "poll_interval_seconds": 30,
         "target_passage_tolerance_ceiling_seconds": 60,
-        "target_passage_tolerance_floor_seconds": 20,
         "target_passage_tolerance_factor": 0.1,
-        "target_passage_directional_tolerance_factor": 0.5,
-        "target_passage_alert_lead_seconds": 15,
+        "target_passage_sparse_update_tolerance_factor": 0.5,
         "user_agent": "train-radar-nl-tests",
         "startup_time": 1_700_000_000,
     }
@@ -45,14 +43,18 @@ def make_target_window(**overrides: object) -> TargetWindow:
         "distance_to_target_m": 42.5,
         "target_shape_dist": 150.0,
         "trip_total_shape_dist": 300.0,
+        "trip_total_path_m": 300.0,
         "previous_stop_sequence": 2,
         "previous_stop_id": "stop-b",
         "previous_stop_name": "Beta",
         "previous_stop_shape_dist": 100.0,
+        "previous_stop_path_m": 100.0,
         "next_stop_sequence": 3,
         "next_stop_id": "stop-c",
         "next_stop_name": "Gamma",
         "next_stop_shape_dist": 200.0,
+        "next_stop_path_m": 200.0,
+        "target_path_m": 150.0,
     }
     values.update(overrides)
     return TargetWindow(**values)
@@ -80,8 +82,9 @@ def make_train_status(**overrides: object) -> TrainStatus:
         "direction_id": "0",
         "vehicle_details": make_vehicle_details(),
         "target_window": make_target_window(),
-        "distance_m": 42.5,
+        "previous_stop_time": 1_700_000_050,
         "estimated_target_time": 1_700_000_100,
+        "next_stop_time": 1_700_000_150,
         "range_start_time": 1_700_000_050,
         "range_end_time": 1_700_000_160,
     }
@@ -105,9 +108,12 @@ def make_static_gtfs_data() -> StaticGtfsData:
         previous_stop_id="stop-c",
         previous_stop_name="Gamma",
         previous_stop_shape_dist=100.0,
+        previous_stop_path_m=100.0,
         next_stop_id="stop-b",
         next_stop_name="Beta",
         next_stop_shape_dist=200.0,
+        next_stop_path_m=200.0,
+        target_path_m=150.0,
     )
     return StaticGtfsData(
         routes={

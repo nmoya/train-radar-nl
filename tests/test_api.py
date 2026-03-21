@@ -40,8 +40,8 @@ def test_train_radar_returns_payload_and_uses_cache(client: TestClient) -> None:
         )
 
     radar_service = client.app.state.radar_service
-    radar_service._response_cache.clear()
-    radar_service._poller.update = fake_update
+    radar_service.response_cache.clear()
+    radar_service.poller.update = fake_update
 
     first_response = client.get("/train/radar")
     second_response = client.get("/train/radar", params={"lat": 0, "lon": 0})
