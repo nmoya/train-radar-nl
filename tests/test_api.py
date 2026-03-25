@@ -8,8 +8,20 @@ import src.api.service as service_module
 from src.config import MINIFIED_STATIC_GTFS_CACHE_PATH
 from src.feed import FeedUpdate
 
+from .support import make_config
+
 
 def test_health_reports_ready_state_and_minified_gtfs(client: TestClient) -> None:
+    radar_service = client.app.state.radar_service
+    radar_service.base_config = make_config(
+        MINIFIED_STATIC_GTFS_CACHE_PATH,
+        target_lat=52.379028,
+        target_lon=4.90125,
+        runtime_static_gtfs_url=None,
+        runtime_static_gtfs_refresh_interval_minutes=15,
+    )
+    radar_service._tigris_state = service_module.TigrisRefreshState()
+
     response = client.get("/health")
 
     assert response.status_code == 200
