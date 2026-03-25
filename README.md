@@ -63,6 +63,8 @@ Environment variables:
 
 - `TARGET_LATITUDE`
 - `TARGET_LONGITUDE`
+- `RUNTIME_STATIC_GTFS_URL`: optional public Tigris object URL for the minified GTFS zip used by the API runtime
+- `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES`: how often the API checks Tigris for an updated zip, default `15`
 
 Files:
 
@@ -152,10 +154,12 @@ Available endpoints:
 
 API behavior:
 
-- the server loads the bundled `.cache/gtfs-nl-min.zip` archive during startup
+- the server loads static GTFS from `RUNTIME_STATIC_GTFS_URL` when configured, otherwise it falls back to the local cache path
+- the runtime keeps a local `.cache/gtfs-nl-min.zip` copy on disk after a successful download
+- the server checks Tigris every `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES` and reloads in-memory GTFS rows when the object changes
 - responses are cached for the server-configured default target for 30 seconds
 - the feed polling path is reused from the CLI implementation
-- the health response includes the deployed commit, startup time, and installed dependencies
+- the health response includes the deployed commit, startup time, installed dependencies, and Tigris refresh metadata
 
 Example request:
 
@@ -176,7 +180,42 @@ The current Fly setup assumes:
 
 - one HTTP service on port `8080`
 - automatic machine start/stop
-- `.cache/gtfs-nl-min.zip` is committed and baked into the image
+- `RUNTIME_STATIC_GTFS_URL` points to the minified GTFS object stored in Tigris
+- the API downloads and refreshes the minified GTFS zip at runtime instead of baking it into the image
+
+Recommended Fly runtime configuration:
+
+- set `RUNTIME_STATIC_GTFS_URL` to the public Tigris object URL for `gtfs/gtfs-nl-min.zip`
+- optionally set `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES` if you want something other than the default `15`
+- keep `TARGET_LATITUDE`, `TARGET_LONGITUDE`, and `APP_TIMEZONE` configured as before
+
+## GTFS Upload Workflow
+
+A scheduled GitHub Actions workflow is available at [`.github/workflows/upload-gtfs-to-tigris-daily.yml`](.github/workflows/upload-gtfs-to-tigris-daily.yml).
+It runs every day at `02:15` UTC and can also be started manually from the GitHub Actions tab with `Run workflow`.
+
+The workflow:
+
+- downloads the latest full `gtfs-nl.zip`
+- builds a fresh `.cache/gtfs-nl-min.zip`
+- uploads the result to the stable Tigris object key `gtfs/gtfs-nl-min.zip`
+
+Required GitHub secrets:
+
+- `TIGRIS_AWS_ACCESS_KEY_ID`
+- `TIGRIS_AWS_SECRET_ACCESS_KEY`
+- `TIGRIS_AWS_REGION`
+- `TIGRIS_AWS_ENDPOINT_URL_S3`
+- `TIGRIS_BUCKET_NAME`
+
+These values come from `fly storage create`, which provisions a Tigris bucket and prints the bucket name, endpoint, and AWS-compatible credentials.
+
+Notes:
+
+- GitHub scheduled workflows run on the latest commit on the default branch
+- the cron expression uses UTC
+- the same workflow handles both daily automation and manual uploads
+- the workflow overwrites the same object key each run rather than creating a commit or triggering a deploy
 
 ## Architecture
 

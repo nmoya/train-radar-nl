@@ -19,10 +19,18 @@ def test_health_reports_ready_state_and_minified_gtfs(client: TestClient) -> Non
     assert payload["radar_service"] == {
         "static_gtfs_ready": True,
         "cache_ttl_seconds": 30,
+        "tigris_refresh_enabled": False,
+        "tigris_refresh_interval_minutes": 15,
+        "tigris_last_read_at": None,
+        "tigris_last_file_updated_at": None,
+        "tigris_last_reload_at": None,
+        "tigris_last_error": None,
     }
     assert payload["app_config"]["target_lat"] == 52.379028
     assert payload["app_config"]["target_lon"] == 4.90125
     assert Path(payload["app_config"]["static_gtfs_cache_path"]) == MINIFIED_STATIC_GTFS_CACHE_PATH
+    assert payload["app_config"]["runtime_static_gtfs_url"] is None
+    assert payload["app_config"]["runtime_static_gtfs_refresh_interval_minutes"] == 15
     assert any(dependency.startswith("fastapi==") for dependency in payload["dependencies"])
 
 

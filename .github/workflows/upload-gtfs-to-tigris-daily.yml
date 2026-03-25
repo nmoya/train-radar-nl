@@ -1,0 +1,79 @@
+name: Build And Upload GTFS To Tigris
+
+on:
+  schedule:
+    - cron: "15 2 * * *"
+  workflow_dispatch:
+    inputs:
+      target_latitude:
+        description: Target latitude for the minimal GTFS build
+        required: false
+        default: "52.377444"
+      target_longitude:
+        description: Target longitude for the minimal GTFS build
+        required: false
+        default: "4.910861"
+      radius_meters:
+        description: Maximum distance from target to a trip shape
+        required: false
+        default: "200"
+      route_type:
+        description: GTFS route_type to keep
+        required: false
+        default: "2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upload-gtfs-to-tigris
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_LATITUDE: ${{ inputs.target_latitude || '52.377444' }}
+      TARGET_LONGITUDE: ${{ inputs.target_longitude || '4.910861' }}
+      APP_TIMEZONE: Europe/Amsterdam
+      GTFS_RADIUS_METERS: ${{ inputs.radius_meters || '200' }}
+      GTFS_ROUTE_TYPE: ${{ inputs.route_type || '2' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.TIGRIS_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.TIGRIS_AWS_REGION }}
+      AWS_ENDPOINT_URL_S3: ${{ secrets.TIGRIS_AWS_ENDPOINT_URL_S3 }}
+      TIGRIS_BUCKET_NAME: ${{ secrets.TIGRIS_BUCKET_NAME }}
+      TIGRIS_OBJECT_KEY: gtfs/gtfs-nl-min.zip
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Build fresh minimal GTFS zip
+        run: |
+          uv run python -m src.scripts.build_minimal_gtfs_zip \
+            --input .cache/gtfs-nl.zip \
+            --output .cache/gtfs-nl-min.zip \
+            --radius-meters "$GTFS_RADIUS_METERS" \
+            --route-type "$GTFS_ROUTE_TYPE"
+
+      - name: Install AWS CLI
+        run: python -m pip install --upgrade awscli
+
+      - name: Upload zip to Tigris
+        run: |
+          aws s3 cp .cache/gtfs-nl-min.zip "s3://$TIGRIS_BUCKET_NAME/$TIGRIS_OBJECT_KEY" \
+            --endpoint-url "$AWS_ENDPOINT_URL_S3" \
+            --region "$AWS_REGION" \
+            --only-show-errors

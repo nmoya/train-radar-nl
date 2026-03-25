@@ -23,7 +23,9 @@ def make_config(cache_path: Path, **overrides: object) -> AppConfig:
     values: dict[str, object] = {
         "feed_url": "https://example.test/feed.pb",
         "static_gtfs_url": "https://example.test/gtfs.zip",
+        "runtime_static_gtfs_url": None,
         "static_gtfs_cache_path": cache_path,
+        "runtime_static_gtfs_refresh_interval_minutes": 15,
         "target_lat": 52.0,
         "target_lon": 4.0014,
         "radius_meters": 200,

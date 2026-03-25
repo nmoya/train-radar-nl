@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 class AppConfigResponse(BaseModel):
     feed_url: str
     static_gtfs_url: str
+    runtime_static_gtfs_url: str | None
     static_gtfs_cache_path: str
+    runtime_static_gtfs_refresh_interval_minutes: int
     target_lat: float
     target_lon: float
     radius_meters: int
@@ -68,6 +70,12 @@ class MonitorApiResponse(BaseModel):
 class RadarServiceResponse(BaseModel):
     static_gtfs_ready: bool
     cache_ttl_seconds: int
+    tigris_refresh_enabled: bool
+    tigris_refresh_interval_minutes: int
+    tigris_last_read_at: str | None
+    tigris_last_file_updated_at: str | None
+    tigris_last_reload_at: str | None
+    tigris_last_error: str | None = None
 
 
 class HealthResponse(BaseModel):

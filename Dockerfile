@@ -11,7 +11,6 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock README.md ./
-COPY .cache/gtfs-nl-min.zip ./.cache/gtfs-nl-min.zip
 COPY src ./src
 
 RUN printf '%s\n' "$APP_GIT_SHA" > .build-commit

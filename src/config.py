@@ -10,6 +10,8 @@ DOTENV_PATH = PROJECT_ROOT / ".env"
 TARGET_LAT = "TARGET_LATITUDE"
 TARGET_LON = "TARGET_LONGITUDE"
 APP_TIMEZONE = "APP_TIMEZONE"
+RUNTIME_STATIC_GTFS_URL = "RUNTIME_STATIC_GTFS_URL"
+RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES = "RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES"
 FULL_STATIC_GTFS_CACHE_PATH = PROJECT_ROOT / ".cache" / "gtfs-nl.zip"
 MINIFIED_STATIC_GTFS_CACHE_PATH = PROJECT_ROOT / ".cache" / "gtfs-nl-min.zip"
 
@@ -61,6 +63,30 @@ def read_str_env(name: str, default: str | None = None) -> str:
     raise ValueError(f"Environment variable {name} is empty and no default provided.")
 
 
+def read_optional_str_env(name: str) -> str | None:
+    """Read an optional string environment variable, returning None when unset or blank."""
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return None
+
+    value = raw_value.strip()
+    return value or None
+
+
+def read_int_env(name: str, default: int | None = None) -> int:
+    """Read an integer environment variable with a default fallback."""
+    raw_value = os.environ.get(name)
+    if raw_value is None or raw_value.strip() == "":
+        if default is not None:
+            return default
+        raise ValueError(f"Environment variable {name} is not set and no default provided.")
+
+    try:
+        return int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"Environment variable {name} must be an int, got {raw_value!r}.") from exc
+
+
 load_dotenv(DOTENV_PATH)
 
 
@@ -68,7 +94,9 @@ load_dotenv(DOTENV_PATH)
 class AppConfig:
     feed_url: str
     static_gtfs_url: str
+    runtime_static_gtfs_url: str | None
     static_gtfs_cache_path: Path
+    runtime_static_gtfs_refresh_interval_minutes: int
     target_lat: float
     target_lon: float
     radius_meters: int
@@ -106,7 +134,12 @@ def with_static_gtfs_cache_path(
 DEFAULT_CONFIG = AppConfig(
     feed_url="https://gtfs-rt.r-ov.nl/trainUpdates.pb",
     static_gtfs_url="https://gtfs.ovapi.nl/nl/gtfs-nl.zip",
+    runtime_static_gtfs_url=read_optional_str_env(RUNTIME_STATIC_GTFS_URL),
     static_gtfs_cache_path=MINIFIED_STATIC_GTFS_CACHE_PATH,
+    runtime_static_gtfs_refresh_interval_minutes=read_int_env(
+        RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES,
+        15,
+    ),
     target_lat=read_float_env(TARGET_LAT),
     target_lon=read_float_env(TARGET_LON),
     radius_meters=200,

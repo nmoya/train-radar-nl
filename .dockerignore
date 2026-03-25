@@ -1,6 +1,4 @@
 .cache
-!.cache/
-!.cache/gtfs-nl-min.zip
 .env
 .git
 .venv

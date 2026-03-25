@@ -28,6 +28,12 @@ def format_unix_timestamp(timestamp: int, timezone_name: str) -> str:
     return format_timestamp_in_timezone(timestamp, timezone_name, "%Y-%m-%d %H:%M:%S %Z")
 
 
+def format_optional_unix_timestamp(timestamp: int | None, timezone_name: str) -> str | None:
+    if timestamp is None:
+        return None
+    return format_unix_timestamp(timestamp, timezone_name)
+
+
 def read_deployed_commit(path: Path = DEPLOYED_COMMIT_PATH) -> str | None:
     if not path.exists():
         return None
@@ -45,11 +51,28 @@ def health(request: Request) -> HealthResponse:
         radar_service=RadarServiceResponse(
             static_gtfs_ready=radar_service.static_gtfs_ready,
             cache_ttl_seconds=radar_service.cache_ttl_seconds,
+            tigris_refresh_enabled=radar_service.tigris_refresh_enabled,
+            tigris_refresh_interval_minutes=radar_service.tigris_refresh_interval_minutes,
+            tigris_last_read_at=format_optional_unix_timestamp(
+                radar_service.tigris_last_read_at,
+                config.timezone_name,
+            ),
+            tigris_last_file_updated_at=format_optional_unix_timestamp(
+                radar_service.tigris_last_file_updated_at,
+                config.timezone_name,
+            ),
+            tigris_last_reload_at=format_optional_unix_timestamp(
+                radar_service.tigris_last_reload_at,
+                config.timezone_name,
+            ),
+            tigris_last_error=radar_service.tigris_last_error,
         ),
         app_config=AppConfigResponse(
             feed_url=config.feed_url,
             static_gtfs_url=config.static_gtfs_url,
+            runtime_static_gtfs_url=config.runtime_static_gtfs_url,
             static_gtfs_cache_path=str(config.static_gtfs_cache_path),
+            runtime_static_gtfs_refresh_interval_minutes=config.runtime_static_gtfs_refresh_interval_minutes,
             target_lat=config.target_lat,
             target_lon=config.target_lon,
             radius_meters=config.radius_meters,
