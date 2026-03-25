@@ -189,6 +189,21 @@ Recommended Fly runtime configuration:
 - optionally set `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES` if you want something other than the default `15`
 - keep `TARGET_LATITUDE`, `TARGET_LONGITUDE`, and `APP_TIMEZONE` configured as before
 
+How to get the public Tigris object URL:
+
+1. create a public bucket with `fly storage create --public`
+2. run the GTFS upload workflow once so `gtfs/gtfs-nl-min.zip` exists in the bucket
+3. open the bucket dashboard with `fly storage dashboard <bucket-name>`
+4. browse to the object `gtfs/gtfs-nl-min.zip`
+5. copy the public object URL from the Tigris dashboard
+6. set that copied value as `RUNTIME_STATIC_GTFS_URL` in Fly
+
+Useful Fly commands:
+
+- `fly storage list`
+- `fly storage status <bucket-name>`
+- `fly storage dashboard <bucket-name>`
+
 ## GTFS Upload Workflow
 
 A scheduled GitHub Actions workflow is available at [`.github/workflows/upload-gtfs-to-tigris-daily.yml`](.github/workflows/upload-gtfs-to-tigris-daily.yml).
