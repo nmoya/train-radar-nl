@@ -36,12 +36,10 @@ class TigrisRefreshState:
     last_file_updated_at: int | None = None
     last_reload_at: int | None = None
     last_error: str | None = None
-    etag: str | None = None
 
 
 @dataclass(frozen=True)
-class RemoteZipMetadata:
-    etag: str | None
+class DownloadedZipMetadata:
     last_modified_at: int | None
 
 
@@ -126,9 +124,14 @@ class RadarApiService:
 
     def startup(self) -> None:
         if self.tigris_refresh_enabled:
-            self.refresh_static_gtfs_if_due(force=True)
-            if not self.static_gtfs_ready:
-                self._load_existing_static_gtfs_or_raise()
+            local_path = self.base_config.static_gtfs_cache_path
+            if local_path.exists():
+                self._load_static_gtfs_from_path(local_path)
+                self._schedule_next_tigris_refresh(int(time.time()))
+            else:
+                self.refresh_static_gtfs_if_due(force=True)
+                if not self.static_gtfs_ready:
+                    self._load_existing_static_gtfs_or_raise()
             if self.tigris_refresh_interval_minutes > 0:
                 self._start_tigris_refresh_thread()
             return
@@ -144,7 +147,6 @@ class RadarApiService:
         self._tigris_session.close()
 
     def get_status(self) -> MonitorApiResponse:
-        self.refresh_static_gtfs_if_due()
         display_timestamp = int(time.time())
         cached_status = self.response_cache.get()
         if cached_status is None:
@@ -153,7 +155,6 @@ class RadarApiService:
         return self._build_response(cached_status, display_timestamp)
 
     def _build_status(self) -> MonitorApiResponse:
-        self.refresh_static_gtfs_if_due()
         display_timestamp = int(time.time())
         cached_status = self._build_cached_status(display_timestamp)
         return self._build_response(cached_status, display_timestamp)
@@ -217,39 +218,18 @@ class RadarApiService:
                 return False
 
             self._tigris_state.last_read_at = current_time
-            if refresh_interval_seconds > 0:
-                self._next_tigris_refresh_at = current_time + refresh_interval_seconds
-
             try:
-                return self._refresh_static_gtfs_locked(current_time=current_time, force=force)
+                refreshed = self._refresh_static_gtfs_locked(current_time=current_time)
             except Exception as exc:
+                self._schedule_next_tigris_refresh(current_time)
                 self._tigris_state.last_error = f"Tigris refresh failed: {exc}"
                 return False
 
-    def _refresh_static_gtfs_locked(self, *, current_time: int, force: bool) -> bool:
-        metadata = self._read_tigris_metadata()
-        previous_last_file_updated_at = self._tigris_state.last_file_updated_at
-        previous_etag = self._tigris_state.etag
-        if metadata.last_modified_at is not None:
-            self._tigris_state.last_file_updated_at = metadata.last_modified_at
+            self._schedule_next_tigris_refresh(current_time)
+            return refreshed
 
+    def _refresh_static_gtfs_locked(self, *, current_time: int) -> bool:
         local_path = self.base_config.static_gtfs_cache_path
-        local_exists = local_path.exists()
-        metadata_changed = (
-            metadata.etag != previous_etag
-            or (
-                metadata.last_modified_at is not None
-                and metadata.last_modified_at != previous_last_file_updated_at
-            )
-        )
-        should_download = force or not local_exists or metadata_changed
-
-        if not should_download:
-            if not self.static_gtfs_ready:
-                self._load_static_gtfs_from_path(local_path)
-            self._tigris_state.last_error = None
-            return False
-
         downloaded_path, downloaded_metadata = self._download_tigris_zip(local_path)
         try:
             rows = read_static_gtfs_rows(downloaded_path)
@@ -259,14 +239,7 @@ class RadarApiService:
             raise
         self._set_static_gtfs_rows(rows)
 
-        if downloaded_metadata.etag is not None:
-            self._tigris_state.etag = downloaded_metadata.etag
-        else:
-            self._tigris_state.etag = metadata.etag
-
         last_modified_at = downloaded_metadata.last_modified_at
-        if last_modified_at is None:
-            last_modified_at = metadata.last_modified_at
         if last_modified_at is not None:
             self._tigris_state.last_file_updated_at = last_modified_at
 
@@ -275,20 +248,7 @@ class RadarApiService:
         self.response_cache.clear()
         return True
 
-    def _read_tigris_metadata(self) -> RemoteZipMetadata:
-        response = self._tigris_session.head(
-            self.base_config.runtime_static_gtfs_url,
-            headers={"User-Agent": self.base_config.user_agent},
-            timeout=30,
-            allow_redirects=True,
-        )
-        response.raise_for_status()
-        return RemoteZipMetadata(
-            etag=response.headers.get("ETag"),
-            last_modified_at=parse_http_datetime(response.headers.get("Last-Modified")),
-        )
-
-    def _download_tigris_zip(self, local_path: Path) -> tuple[Path, RemoteZipMetadata]:
+    def _download_tigris_zip(self, local_path: Path) -> tuple[Path, DownloadedZipMetadata]:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = local_path.with_suffix(f"{local_path.suffix}.download")
 
@@ -300,8 +260,7 @@ class RadarApiService:
                 stream=True,
             ) as response:
                 response.raise_for_status()
-                metadata = RemoteZipMetadata(
-                    etag=response.headers.get("ETag"),
+                metadata = DownloadedZipMetadata(
                     last_modified_at=parse_http_datetime(response.headers.get("Last-Modified")),
                 )
 
@@ -331,6 +290,11 @@ class RadarApiService:
         with self._static_gtfs_lock:
             self.static_gtfs_rows = rows
 
+    def _schedule_next_tigris_refresh(self, current_time: int) -> None:
+        refresh_interval_seconds = max(0, self.tigris_refresh_interval_minutes * 60)
+        if refresh_interval_seconds > 0:
+            self._next_tigris_refresh_at = current_time + refresh_interval_seconds
+
     def _start_tigris_refresh_thread(self) -> None:
         if self._tigris_refresh_thread is not None:
             return
@@ -344,6 +308,15 @@ class RadarApiService:
         self._tigris_refresh_thread.start()
 
     def _run_tigris_refresh_loop(self) -> None:
-        wait_seconds = max(5, min(self.tigris_refresh_interval_minutes * 60, 60))
-        while not self._tigris_refresh_stop.wait(wait_seconds):
+        while not self._tigris_refresh_stop.wait(self._next_tigris_wait_seconds()):
             self.refresh_static_gtfs_if_due()
+
+    def _next_tigris_wait_seconds(self) -> int:
+        if self.tigris_refresh_interval_minutes <= 0:
+            return 3600
+
+        if self._next_tigris_refresh_at <= 0:
+            return 5
+
+        remaining_seconds = self._next_tigris_refresh_at - int(time.time())
+        return max(5, min(remaining_seconds, 3600))

@@ -138,7 +138,7 @@ DEFAULT_CONFIG = AppConfig(
     static_gtfs_cache_path=MINIFIED_STATIC_GTFS_CACHE_PATH,
     runtime_static_gtfs_refresh_interval_minutes=read_int_env(
         RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES,
-        15,
+        1440,
     ),
     target_lat=read_float_env(TARGET_LAT),
     target_lon=read_float_env(TARGET_LON),

@@ -64,7 +64,7 @@ Environment variables:
 - `TARGET_LATITUDE`
 - `TARGET_LONGITUDE`
 - `RUNTIME_STATIC_GTFS_URL`: optional public Tigris object URL for the minified GTFS zip used by the API runtime
-- `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES`: how often the API checks Tigris for an updated zip, default `15`
+- `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES`: how often the API checks Tigris for an updated zip, default `1440` (once per day)
 
 Files:
 
@@ -156,7 +156,7 @@ API behavior:
 
 - the server loads static GTFS from `RUNTIME_STATIC_GTFS_URL` when configured, otherwise it falls back to the local cache path
 - the runtime keeps a local `.cache/gtfs-nl-min.zip` copy on disk after a successful download
-- the server checks Tigris every `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES` and reloads in-memory GTFS rows when the object changes
+- the server downloads and fully replaces the local runtime GTFS zip every `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES`
 - responses are cached for the server-configured default target for 30 seconds
 - the feed polling path is reused from the CLI implementation
 - the health response includes the deployed commit, startup time, installed dependencies, and Tigris refresh metadata
@@ -186,7 +186,7 @@ The current Fly setup assumes:
 Recommended Fly runtime configuration:
 
 - set `RUNTIME_STATIC_GTFS_URL` to the public Tigris object URL for `gtfs/gtfs-nl-min.zip`
-- optionally set `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES` if you want something other than the default `15`
+- optionally set `RUNTIME_STATIC_GTFS_REFRESH_INTERVAL_MINUTES` if you want something other than the default `1440`
 - keep `TARGET_LATITUDE`, `TARGET_LONGITUDE`, and `APP_TIMEZONE` configured as before
 
 How to get the public Tigris object URL:

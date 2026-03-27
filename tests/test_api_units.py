@@ -44,7 +44,7 @@ def test_api_models_support_expected_defaults() -> None:
             static_gtfs_ready=True,
             cache_ttl_seconds=30,
             tigris_refresh_enabled=False,
-            tigris_refresh_interval_minutes=15,
+            tigris_refresh_interval_minutes=1440,
             tigris_last_read_at=None,
             tigris_last_file_updated_at=None,
             tigris_last_reload_at=None,
@@ -54,7 +54,7 @@ def test_api_models_support_expected_defaults() -> None:
             static_gtfs_url="zip",
             runtime_static_gtfs_url=None,
             static_gtfs_cache_path="cache.zip",
-            runtime_static_gtfs_refresh_interval_minutes=15,
+            runtime_static_gtfs_refresh_interval_minutes=1440,
             target_lat=1.0,
             target_lon=2.0,
             radius_meters=200,
@@ -209,7 +209,7 @@ def test_health_route_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, a
             static_gtfs_ready=True,
             cache_ttl_seconds=30,
             tigris_refresh_enabled=True,
-            tigris_refresh_interval_minutes=15,
+            tigris_refresh_interval_minutes=1440,
             tigris_last_read_at=60,
             tigris_last_file_updated_at=120,
             tigris_last_reload_at=180,
@@ -224,13 +224,13 @@ def test_health_route_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, a
     assert response.deployed_commit == "sha"
     assert response.radar_service.static_gtfs_ready is True
     assert response.radar_service.tigris_refresh_enabled is True
-    assert response.radar_service.tigris_refresh_interval_minutes == 15
+    assert response.radar_service.tigris_refresh_interval_minutes == 1440
     assert response.radar_service.tigris_last_read_at == "1970-01-01 01:01:00 CET"
     assert response.radar_service.tigris_last_file_updated_at == "1970-01-01 01:02:00 CET"
     assert response.radar_service.tigris_last_reload_at == "1970-01-01 01:03:00 CET"
     assert response.app_config.target_lat == app_config.target_lat
     assert response.app_config.timezone_name == app_config.timezone_name
-    assert response.app_config.runtime_static_gtfs_refresh_interval_minutes == 15
+    assert response.app_config.runtime_static_gtfs_refresh_interval_minutes == 1440
 
 
 def test_parse_http_datetime_handles_missing_and_invalid_values() -> None:
@@ -255,14 +255,6 @@ def test_radar_api_service_refreshes_from_tigris_and_clears_cache(
     cleared: list[bool] = []
     monkeypatch.setattr(service.response_cache, "clear", lambda: cleared.append(True))
     monkeypatch.setattr(service_module.time, "time", lambda: 1_700_000_300)
-    monkeypatch.setattr(
-        service,
-        "_read_tigris_metadata",
-        lambda: service_module.RemoteZipMetadata(
-            etag="etag-1",
-            last_modified_at=1_700_000_200,
-        ),
-    )
 
     downloaded_path = cache_path.with_suffix(".zip.download")
     downloaded_path.write_bytes(b"zip")
@@ -271,8 +263,7 @@ def test_radar_api_service_refreshes_from_tigris_and_clears_cache(
         "_download_tigris_zip",
         lambda local_path: (
             downloaded_path,
-            service_module.RemoteZipMetadata(
-                etag="etag-1",
+            service_module.DownloadedZipMetadata(
                 last_modified_at=1_700_000_200,
             ),
         ),
@@ -288,7 +279,11 @@ def test_radar_api_service_refreshes_from_tigris_and_clears_cache(
     assert cleared == [True]
 
 
-def test_radar_api_service_skips_unchanged_tigris_download(app_config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_radar_api_service_skips_tigris_download_until_due(
+    app_config,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     cache_path = tmp_path / "gtfs-min.zip"
     cache_path.write_bytes(b"existing")
     service = RadarApiService(
@@ -299,17 +294,8 @@ def test_radar_api_service_skips_unchanged_tigris_download(app_config, monkeypat
         )
     )
     service.static_gtfs_rows = "rows"
-    service._tigris_state.etag = "etag-1"
-    service._tigris_state.last_file_updated_at = 1_700_000_200
+    service._next_tigris_refresh_at = 1_700_000_500
     monkeypatch.setattr(service_module.time, "time", lambda: 1_700_000_300)
-    monkeypatch.setattr(
-        service,
-        "_read_tigris_metadata",
-        lambda: service_module.RemoteZipMetadata(
-            etag="etag-1",
-            last_modified_at=1_700_000_200,
-        ),
-    )
     download_attempts: list[bool] = []
     monkeypatch.setattr(
         service,
@@ -319,6 +305,33 @@ def test_radar_api_service_skips_unchanged_tigris_download(app_config, monkeypat
 
     assert service.refresh_static_gtfs_if_due() is False
     assert download_attempts == []
+
+
+def test_radar_api_service_startup_loads_local_tigris_cache_without_immediate_download(
+    app_config,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "gtfs-min.zip"
+    cache_path.write_bytes(b"existing")
+    service = RadarApiService(
+        make_config(
+            cache_path,
+            runtime_static_gtfs_url="https://example.test/gtfs-min.zip",
+            runtime_static_gtfs_refresh_interval_minutes=5,
+        )
+    )
+    monkeypatch.setattr(service_module.time, "time", lambda: 1_700_000_300)
+    monkeypatch.setattr(service_module, "read_static_gtfs_rows", lambda path: "rows")
+    download_attempts: list[Path] = []
+    monkeypatch.setattr(service, "_download_tigris_zip", lambda local_path: download_attempts.append(local_path))
+
+    service.startup()
+
+    assert service.static_gtfs_rows == "rows"
+    assert service._next_tigris_refresh_at == 1_700_000_600
+    assert download_attempts == []
+    service.shutdown()
 
 
 def test_train_route_returns_status_and_wraps_errors() -> None:
