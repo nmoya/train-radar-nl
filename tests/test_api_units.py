@@ -77,14 +77,14 @@ def test_radar_api_service_startup_and_shutdown(app_config, monkeypatch: pytest.
     service = RadarApiService(app_config)
     closed = []
     monkeypatch.setattr(service.poller, "ensure_static_gtfs_zip", lambda: Path("cache.zip"))
-    monkeypatch.setattr(service_module, "read_static_gtfs_rows", lambda path: "rows")
+    monkeypatch.setattr(service, "_load_static_gtfs_data_from_path", lambda path: "gtfs-data")
     monkeypatch.setattr(service.poller, "close", lambda: closed.append(True))
 
     service.startup()
     service.shutdown()
 
     assert service.static_gtfs_ready is True
-    assert service.static_gtfs_rows == "rows"
+    assert service.static_gtfs_data == "gtfs-data"
     assert closed == [True]
 
 
@@ -92,7 +92,7 @@ def test_radar_api_service_get_status_uses_cache_and_expires(app_config, monkeyp
     service = RadarApiService(app_config, cache_ttl_seconds=30)
     built: list[int] = []
     rendered: list[tuple[str, int]] = []
-    times = iter([100.0, 100.0, 110.0, 140.0, 140.0])
+    times = iter([100.0, 100.0, 100.0, 110.0, 140.0, 140.0, 140.0])
     monkeypatch.setattr(service.response_cache, "_clock", lambda: next(times))
     wall_times = iter([1000, 1010, 1040])
     monkeypatch.setattr(service_module.time, "time", lambda: next(wall_times))
@@ -135,8 +135,8 @@ def test_ttl_cache_expires_entries() -> None:
 
 def test_radar_api_service_build_status_and_train_response(app_config, monkeypatch: pytest.MonkeyPatch) -> None:
     service = RadarApiService(app_config, cache_ttl_seconds=30)
-    service.static_gtfs_rows = "rows"
     static_gtfs_data = make_static_gtfs_data()
+    service.static_gtfs_data = static_gtfs_data
     train_status = make_train_status(
         vehicle_details=make_vehicle_details(direction_id="0"),
         estimated_target_time=170,
@@ -147,7 +147,6 @@ def test_radar_api_service_build_status_and_train_response(app_config, monkeypat
     )
     snapshot = make_snapshot(feed_timestamp=160, left_trains=[train_status], right_trains=[])
 
-    monkeypatch.setattr(service_module, "build_static_gtfs_data", lambda rows, config: static_gtfs_data)
     monkeypatch.setattr(service.poller, "update", lambda: SimpleNamespace(error="warn"))
     monkeypatch.setattr(service_module.time, "time", lambda: 150)
 
@@ -268,10 +267,10 @@ def test_radar_api_service_refreshes_from_tigris_and_clears_cache(
             ),
         ),
     )
-    monkeypatch.setattr(service_module, "read_static_gtfs_rows", lambda path: "rows")
+    monkeypatch.setattr(service, "_load_static_gtfs_data_from_path", lambda path: "gtfs-data")
 
     assert service.refresh_static_gtfs_if_due(force=True) is True
-    assert service.static_gtfs_rows == "rows"
+    assert service.static_gtfs_data == "gtfs-data"
     assert service.tigris_last_read_at == 1_700_000_300
     assert service.tigris_last_file_updated_at == 1_700_000_200
     assert service.tigris_last_reload_at == 1_700_000_300
@@ -293,7 +292,7 @@ def test_radar_api_service_skips_tigris_download_until_due(
             runtime_static_gtfs_refresh_interval_minutes=5,
         )
     )
-    service.static_gtfs_rows = "rows"
+    service.static_gtfs_data = "gtfs-data"
     service._next_tigris_refresh_at = 1_700_000_500
     monkeypatch.setattr(service_module.time, "time", lambda: 1_700_000_300)
     download_attempts: list[bool] = []
@@ -322,16 +321,52 @@ def test_radar_api_service_startup_loads_local_tigris_cache_without_immediate_do
         )
     )
     monkeypatch.setattr(service_module.time, "time", lambda: 1_700_000_300)
-    monkeypatch.setattr(service_module, "read_static_gtfs_rows", lambda path: "rows")
+    monkeypatch.setattr(service, "_load_static_gtfs_data_from_path", lambda path: "gtfs-data")
     download_attempts: list[Path] = []
     monkeypatch.setattr(service, "_download_tigris_zip", lambda local_path: download_attempts.append(local_path))
 
     service.startup()
 
-    assert service.static_gtfs_rows == "rows"
+    assert service.static_gtfs_data == "gtfs-data"
     assert service._next_tigris_refresh_at == 1_700_000_600
     assert download_attempts == []
     service.shutdown()
+
+
+def test_radar_api_service_get_status_uses_single_flight_on_cache_miss(
+    app_config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = RadarApiService(app_config, cache_ttl_seconds=30)
+    service.static_gtfs_data = make_static_gtfs_data()
+    build_calls: list[int] = []
+    rendered: list[tuple[str, int]] = []
+
+    monkeypatch.setattr(service_module.time, "time", lambda: 1000)
+
+    def fake_build(display_timestamp: int) -> str:
+        build_calls.append(display_timestamp)
+        service.response_cache.set("cached-status")
+        return "cached-status"
+
+    monkeypatch.setattr(service, "_build_cached_status", fake_build)
+    monkeypatch.setattr(
+        service,
+        "_build_response",
+        lambda cached_status, display_timestamp: rendered.append((cached_status, display_timestamp))
+        or f"{cached_status}:{display_timestamp}",
+    )
+
+    first = service.get_status()
+    second = service.get_status()
+
+    assert first == "cached-status:1000"
+    assert second == "cached-status:1000"
+    assert build_calls == [1000]
+    assert rendered == [
+        ("cached-status", 1000),
+        ("cached-status", 1000),
+    ]
 
 
 def test_train_route_returns_status_and_wraps_errors() -> None:

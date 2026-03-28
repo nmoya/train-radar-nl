@@ -14,7 +14,7 @@ from src.config import AppConfig
 from src.feed import FeedPoller
 from src.monitor_models import MonitorSnapshot, TrainStatus
 from src.monitor_snapshot_builder import MonitorSnapshotBuilder
-from src.static_gtfs import StaticGtfsRows, build_static_gtfs_data, read_static_gtfs_rows
+from src.static_gtfs import StaticGtfsData, build_static_gtfs_data, read_static_gtfs_rows
 from src.target_passage import TargetPassageEstimator
 from src.api.ttl_cache import TtlCache
 
@@ -65,11 +65,12 @@ class RadarApiService:
     ) -> None:
         self.base_config = base_config
         self.poller = FeedPoller(self.base_config)
-        self.static_gtfs_rows: StaticGtfsRows | None = None
+        self.static_gtfs_data: StaticGtfsData | None = None
         self.response_cache = TtlCache[CachedMonitorStatus](
             cache_ttl_seconds or base_config.poll_interval_seconds
         )
         self._static_gtfs_lock = threading.Lock()
+        self._status_build_lock = threading.Lock()
         self._tigris_refresh_lock = threading.Lock()
         self._tigris_refresh_stop = threading.Event()
         self._tigris_refresh_thread: threading.Thread | None = None
@@ -88,7 +89,7 @@ class RadarApiService:
     @property
     def static_gtfs_ready(self) -> bool:
         with self._static_gtfs_lock:
-            return self.static_gtfs_rows is not None
+            return self.static_gtfs_data is not None
 
     @property
     def config(self) -> AppConfig:
@@ -150,7 +151,10 @@ class RadarApiService:
         display_timestamp = int(time.time())
         cached_status = self.response_cache.get()
         if cached_status is None:
-            cached_status = self.response_cache.set(self._build_cached_status(display_timestamp))
+            with self._status_build_lock:
+                cached_status = self.response_cache.get()
+                if cached_status is None:
+                    cached_status = self.response_cache.set(self._build_cached_status(display_timestamp))
 
         return self._build_response(cached_status, display_timestamp)
 
@@ -161,17 +165,15 @@ class RadarApiService:
 
     def _build_cached_status(self, display_timestamp: int) -> CachedMonitorStatus:
         with self._static_gtfs_lock:
-            static_gtfs_rows = self.static_gtfs_rows
+            static_gtfs = self.static_gtfs_data
 
-        if static_gtfs_rows is None:
-            raise RuntimeError("Static GTFS rows are not loaded.")
+        if static_gtfs is None:
+            raise RuntimeError("Static GTFS data is not loaded.")
 
-        config = self.base_config
-        static_gtfs = build_static_gtfs_data(static_gtfs_rows, config)
         feed_update = self.poller.update()
         snapshot = MonitorSnapshotBuilder(
             static_gtfs,
-            TargetPassageEstimator(config),
+            TargetPassageEstimator(self.base_config),
         ).build(feed_update)
 
         return CachedMonitorStatus(
@@ -232,12 +234,12 @@ class RadarApiService:
         local_path = self.base_config.static_gtfs_cache_path
         downloaded_path, downloaded_metadata = self._download_tigris_zip(local_path)
         try:
-            rows = read_static_gtfs_rows(downloaded_path)
+            static_gtfs_data = self._load_static_gtfs_data_from_path(downloaded_path)
             downloaded_path.replace(local_path)
         except Exception:
             downloaded_path.unlink(missing_ok=True)
             raise
-        self._set_static_gtfs_rows(rows)
+        self._set_static_gtfs_data(static_gtfs_data)
 
         last_modified_at = downloaded_metadata.last_modified_at
         if last_modified_at is not None:
@@ -284,11 +286,15 @@ class RadarApiService:
         raise RuntimeError(error)
 
     def _load_static_gtfs_from_path(self, zip_path: Path) -> None:
-        self._set_static_gtfs_rows(read_static_gtfs_rows(zip_path))
+        self._set_static_gtfs_data(self._load_static_gtfs_data_from_path(zip_path))
 
-    def _set_static_gtfs_rows(self, rows: StaticGtfsRows) -> None:
+    def _load_static_gtfs_data_from_path(self, zip_path: Path) -> StaticGtfsData:
+        rows = read_static_gtfs_rows(zip_path)
+        return build_static_gtfs_data(rows, self.base_config)
+
+    def _set_static_gtfs_data(self, static_gtfs_data: StaticGtfsData) -> None:
         with self._static_gtfs_lock:
-            self.static_gtfs_rows = rows
+            self.static_gtfs_data = static_gtfs_data
 
     def _schedule_next_tigris_refresh(self, current_time: int) -> None:
         refresh_interval_seconds = max(0, self.tigris_refresh_interval_minutes * 60)
